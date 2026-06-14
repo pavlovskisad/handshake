@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>HANDSHAKE — text → dial-up</title>
+<style>
+  :root{ --blue:#0000aa; --cyan:#55ffff; --mcyan:#00aaaa; --yel:#ffff55; --red:#ff5555; --dim:#3366cc; }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--blue); color:var(--cyan);
+    font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  body{max-width:680px; margin:0 auto; padding:0 8px 80px;}
+
+  .menu{display:flex; gap:16px; padding:2px 8px; color:#000;}
+  .menu b{color:var(--red); font-weight:400;}
+  .menu span{cursor:pointer; padding:0 3px; user-select:none;}
+  .menu span:active, .menu span:hover{background:#000; color:var(--cyan);}
+  .menu .grow, .menu .tclk{cursor:default; background:none;}
+  .menu .tclk:hover{color:var(--cyan);}
+  .menu .tclk{color:var(--cyan);}
+  .grow{flex:1;}
+
+  fieldset{border:3px double var(--cyan); padding:8px; margin-top:10px;}
+  legend{margin:0 auto; background:var(--mcyan); color:#000; padding:0 10px;}
+
+  .scope{position:relative;}
+  canvas{display:block; width:100%; height:200px;}
+  .khz{position:absolute; right:5px; top:4px; font-size:11px; color:var(--dim);}
+
+  .subs{border-top:1px solid var(--cyan); margin-top:6px; padding:6px 2px 0;
+    min-height:42px; color:var(--yel);}
+  .subs .who{color:#fff; margin-right:6px;}
+  .subs .cur{display:inline-block; width:8px; height:13px; background:var(--yel);
+    vertical-align:-2px; animation:bl 1s steps(1) infinite;}
+  @keyframes bl{50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.subs .cur,.ccur{animation:none}}
+
+  textarea{display:block; width:100%; background:var(--blue); color:var(--yel);
+    border:1px solid var(--cyan); padding:6px 8px; font:inherit; font-size:16px;
+    min-height:78px; resize:vertical; caret-color:var(--yel);}
+  textarea::placeholder{color:var(--dim);}
+  textarea:focus{outline:none; border-color:#fff;}
+
+  .row{display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap;}
+  #spd{background:none; border:none; color:var(--yel); font:inherit; cursor:pointer; padding:0;}
+  #spd:hover, #spd:focus-visible{background:var(--cyan); color:#000; outline:none;}
+  .meta{margin-left:auto; color:#fff;}
+
+  .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
+  .cmd{display:flex; align-items:center; gap:6px; color:#fff; padding:2px 4px;}
+  .ccur{display:inline-block; width:8px; height:13px; background:#fff;
+    animation:bl 1s steps(1) infinite;}
+  .led{color:var(--dim); padding:0 2px;}
+  .led i{display:none;}
+  .led.on{background:var(--cyan); color:#000;}
+  .led.hot{background:var(--red); color:#000;}
+  .sep{color:var(--dim);}
+
+  .fkeys{display:flex; gap:6px; padding:2px 0 5px;}
+  .fk{flex:1; background:var(--mcyan); color:#000; border:none; font:inherit;
+    padding:1px 3px; text-align:left; cursor:pointer; white-space:nowrap;}
+  .fk b{background:#000; color:#fff; font-weight:400; padding:0 2px; margin-right:1px;}
+  .fk:hover:not(:disabled), .fk:focus-visible{background:var(--cyan); outline:none;}
+  .fk:disabled{background:#006666; color:#004444; cursor:default;}
+</style>
+</head>
+<body>
+<div class="menu">
+  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mHelp"><b>H</b>elp</span>
+  <span class="grow"></span><span class="tclk" id="tclk">00:00</span>
+</div>
+
+<fieldset><legend>C:\TERMINAL</legend>
+  <div class="scope">
+    <canvas id="spec"></canvas>
+    <div class="khz">0-4 kHz</div>
+  </div>
+  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE — press 1 Connect.</div>
+</fieldset>
+
+<fieldset><legend>C:\MESSAGE</legend>
+  <textarea id="msg" maxlength="500" placeholder="привіт з 1998…">meet me in 1998</textarea>
+  <div class="row">
+    <button id="spd" data-v="0.5" aria-label="payload speed">Speed:½x</button>
+    <span class="meta" id="est"></span>
+  </div>
+</fieldset>
+
+<div class="bottom">
+  <div class="cmd">C:\HANDSHAKE><span class="ccur">&nbsp;</span>
+    <span class="grow"></span>
+    <span class="led" id="ledOH"><i></i>OH</span><span class="led" id="ledCD"><i></i>CD</span><span class="led" id="ledRD"><i></i>RD</span><span class="led" id="ledSD"><i></i>SD</span>
+    <span class="sep">│</span><span id="lnk">OFFLINE</span>&nbsp;<span id="clk">00:00</span>
+  </div>
+  <div class="fkeys">
+    <button class="fk" id="tx"><b>1</b>Connect</button>
+    <button class="fk" id="save" disabled><b>2</b>Save</button>
+    <button class="fk" id="share" disabled><b>3</b>Share</button>
+    <button class="fk" id="fkspd"><b>4</b>Speed</button>
+    <button class="fk" id="fkq"><b>10</b>Quit</button>
+  </div>
+</div>
+
+<script>
+const SR = 44100;
+const enc = new TextEncoder();
+let actx = null, wavBlob = null, analyser = null, freq = null;
+let events = [], charTimes = [], totalDur = 0, playT0 = 0, playing = false, playKind = 'boot';
+let connected = false, connectedAt = 0;
+let boot = null, msg = null, help = null, playText = '';
+
+/* ---------- synthesis ---------- */
+function env(a, n){
+  const e = Math.min(132, n>>2);
+  for(let i=0;i<e;i++){ a[i]*=i/e; a[n-1-i]*=i/e; }
+  return a;
+}
+function tone(dur, freqs, amp){
+  const n = Math.round(dur*SR), out = new Float32Array(n);
+  const ph = freqs.map(()=>0);
+  for(let i=0;i<n;i++){
+    let s = 0;
+    for(let k=0;k<freqs.length;k++){ ph[k]+=2*Math.PI*freqs[k]/SR; s+=Math.sin(ph[k]); }
+    out[i] = s*amp/freqs.length;
+  }
+  return env(out, n);
+}
+function silence(dur){ return new Float32Array(Math.round(dur*SR)); }
+function ansam(dur){
+  const n = Math.round(dur*SR), out = new Float32Array(n);
+  let ph = 0, sign = 1;
+  for(let i=0;i<n;i++){
+    if(i>0 && i % Math.round(0.45*SR) === 0) sign = -sign;
+    ph += 2*Math.PI*2100/SR;
+    out[i] = sign*Math.sin(ph)*0.4*(1+0.22*Math.sin(2*Math.PI*15*i/SR));
+  }
+  return env(out, n);
+}
+function fsk(bits, baud, fM, fS, amp){
+  const spb = SR/baud, n = Math.round(bits.length*spb), out = new Float32Array(n);
+  let ph = 0;
+  for(let i=0;i<n;i++){
+    const f = bits[Math.min(bits.length-1, (i/spb)|0)] ? fM : fS;
+    ph += 2*Math.PI*f/SR;
+    out[i] = Math.sin(ph)*amp;
+  }
+  return env(out, n);
+}
+function sweep(dur, f0, f1, amp){
+  const n = Math.round(dur*SR), out = new Float32Array(n);
+  let ph = 0;
+  for(let i=0;i<n;i++){
+    ph += 2*Math.PI*(f0+(f1-f0)*i/n)/SR;
+    out[i] = Math.sin(ph)*amp;
+  }
+  return env(out, n);
+}
+function noise(dur, amp){
+  const n = Math.round(dur*SR), out = new Float32Array(n);
+  let p = 0;
+  for(let i=0;i<n;i++){ p = (Math.random()*2-1 + p*1.6)/2.6; out[i] = p*amp*2.2; }
+  return env(out, n);
+}
+function bong(dur, f1, f2, amp){
+  const n = Math.round(dur*SR), out = new Float32Array(n);
+  let p1=0, p2=0;
+  for(let i=0;i<n;i++){
+    p1+=2*Math.PI*f1/SR; p2+=2*Math.PI*f2/SR;
+    out[i]=(Math.sin(p1)+Math.sin(p2))*0.5*amp*Math.exp(-3.2*i/n);
+  }
+  return out;
+}
+function psk(bits, baud, f, amp){
+  const spb = SR/baud, n = Math.round(bits.length*spb), out = new Float32Array(n);
+  let ph = 0, last = -1, sign = 1;
+  for(let i=0;i<n;i++){
+    const k = Math.min(bits.length-1, (i/spb)|0);
+    if(k !== last){ if(bits[k]===0) sign = -sign; last = k; }
+    ph += 2*Math.PI*f/SR;
+    out[i] = Math.sin(ph)*sign*amp;
+  }
+  return env(out, n);
+}
+let seed = 7;
+function rbit(){ seed = (seed*1103515245+12345)>>>0; return (seed>>16)&1; }
+function rbits(k){ const a=[]; for(let i=0;i<k;i++) a.push(rbit()); return a; }
+const DTMF_ROW=[697,770,852,941], DTMF_COL=[1209,1336,1477,1633];
+const DTMF = {};
+'123A456B789C*0#D'.split('').forEach((d,i)=>DTMF[d]=[DTMF_ROW[(i/4)|0], DTMF_COL[i%4]]);
+
+function byteBits(b){
+  const a = [0];
+  for(let i=0;i<8;i++) a.push((b>>i)&1);
+  a.push(1);
+  return a;
+}
+function lineize(x){ // copper line: bandpass 250-3400, saturation, hiss, hum, crackle
+  let lp=0, dc=0, h=0, c=0, ph50=0;
+  for(let i=0;i<x.length;i++){
+    lp += 0.384*(x[i]-lp);
+    dc += 0.035*(lp-dc);
+    let s = Math.tanh((lp-dc)*1.7)*0.82;
+    h += 0.3*((Math.random()*2-1)-h);
+    if(Math.random()<0.00001) c = 0.4+Math.random()*0.3;
+    c *= 0.93;
+    ph50 += 2*Math.PI*50/SR;
+    s += h*0.035 + Math.sin(ph50)*0.004 + c*(Math.random()*2-1);
+    x[i] = Math.max(-1, Math.min(1, s));
+  }
+  return x;
+}
+function richChar(ch, wordN, spd){
+  if(ch === ' ')
+    return (wordN % 13 === 0) ? sweep(0.16/spd, 2400, 600, 0.3) : tone(0.09/spd, [1270], 0.28);
+  if('.!?'.includes(ch)) return bong(0.42/Math.sqrt(spd), 850, 1633, 0.55);
+  if(',;:'.includes(ch)) return noise(0.06/spd, 0.3);
+  if(DTMF[ch]) return tone(0.09/spd, DTMF[ch], 0.5);
+  const bits = [];
+  for(const b of enc.encode(ch)) bits.push(...byteBits(b));
+  switch(ch.codePointAt(0) % 4){
+    case 0: return fsk(bits, 300*spd, 1270, 1070, 0.45);
+    case 1: return fsk(bits, 600*spd, 1850, 1650, 0.45);
+    case 2: return fsk([...bits, ...bits, ...bits], 1200*spd, 2100, 1300, 0.45);
+    default: return psk(bits, 600*spd, 1800, 0.45);
+  }
+}
+
+function synth(mode, text, spd, label){
+  label = label || 'TX';
+  const chunks = [], ev = [], ct = [];
+  let t = 0;
+  const add = s=>{ chunks.push(s); t += s.length/SR; };
+  const sub = (who, txt)=>ev.push({t, who, txt});
+
+  if(mode === 'boot'){
+    sub('NET','dialing 1-9-9-8…');
+    for(const d of '1998'){ add(tone(0.13, DTMF[d], 0.55)); add(silence(0.07)); }
+    add(silence(0.35));
+    sub('NET','ringing…');
+    add(tone(1.0,[440,480],0.22)); add(silence(0.4));
+    sub('ANSWER','modem here. network — kill your echo suppressors.');
+    add(ansam(2.3)); add(silence(0.25));
+    sub('CALLER','i speak V.90, V.34, V.32bis…');
+    add(fsk(rbits(220), 300, 1180, 980, 0.48)); add(silence(0.18));
+    sub('ANSWER','V.90. let’s go.');
+    add(fsk(rbits(150), 300, 1850, 1650, 0.48)); add(silence(0.25));
+    sub('BOTH','probing the line — which frequencies survive this copper?');
+    add(bong(0.45, 850, 1633, 0.6)); add(silence(0.12));
+    add(bong(0.45, 850, 1633, 0.6)); add(silence(0.15));
+    add(tone(0.55,[150,750,1350,1950,2550,3150],0.6));
+    add(sweep(0.6, 300, 3200, 0.4)); add(silence(0.2));
+    sub('BOTH','training equalizers on known garbage…');
+    add(noise(1.3, 0.33)); add(silence(0.3));
+    sub('LINK','CONNECT 57600 — line is yours.');
+    add(silence(0.8));
+  }else{
+    sub(label,'');
+    add(tone(0.12,[1270],0.3));
+    let wordN = 0;
+    for(const ch of text){
+      ct.push(t);
+      add(richChar(ch, ++wordN, spd));
+      add(silence(0.025/spd));
+    }
+    add(silence(0.2));
+    sub('LINE','TX complete — '+[...text].length+' chars OK.');
+    add(silence(0.6));
+  }
+  const out = new Float32Array(Math.round(t*SR)+1);
+  let p = 0;
+  for(const c of chunks){ out.set(c, p); p += c.length; }
+  return { f32: lineize(out), events: ev, charTimes: ct, dur: t, text: text, label: label };
+}
+
+/* ---------- wav ---------- */
+function toWav(f32){
+  const n = f32.length, b = new ArrayBuffer(44+n*2), v = new DataView(b);
+  const ws = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4,36+n*2,true); ws(8,'WAVEfmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,SR,true); v.setUint32(28,SR*2,true); v.setUint16(32,2,true);
+  v.setUint16(34,16,true); ws(36,'data'); v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    v.setInt16(44+i*2, s*32767, true);
+  }
+  return new Blob([b], {type:'audio/wav'});
+}
+
+/* ---------- spectrogram + subs ---------- */
+const cv = document.getElementById('spec'), cx = cv.getContext('2d');
+function fit(){
+  const r = devicePixelRatio||1, w = cv.clientWidth, h = 200;
+  cv.width = w*r; cv.height = h*r;
+  cx.fillStyle = '#0000aa'; cx.fillRect(0,0,cv.width,cv.height);
+}
+fit(); addEventListener('resize', fit);
+
+function heat(v){ // 0..255 -> NC blue -> cyan -> white
+  const x = v/255;
+  if(x<0.35){ const k=x/0.35; return `rgb(0,${(120*k)|0},${(170+50*k)|0})`; }
+  if(x<0.75){ const k=(x-0.35)/0.4; return `rgb(${(85*k)|0},${(120+135*k)|0},${(220+35*k)|0})`; }
+  const k=(x-0.75)/0.25; return `rgb(${(85+170*k)|0},255,255)`;
+}
+
+const subs = document.getElementById('subs');
+const leds = {OH:ledOH, CD:ledCD, RD:ledRD, SD:ledSD};
+function setLed(id,on,hot){ leds[id].className = 'led'+(on?(hot?' hot':' on'):''); }
+function escp(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function frame(){
+  if(!playing) return;
+  const now = actx.currentTime - playT0;
+
+  analyser.getByteFrequencyData(freq);
+  const bins = Math.round(4000/(SR/analyser.fftSize));
+  const colW = Math.max(2, (devicePixelRatio||1)*2), H = cv.height;
+  cx.drawImage(cv, -colW, 0);
+  for(let y=0;y<H;y++){
+    const bin = ((1 - y/H)*bins)|0;
+    cx.fillStyle = heat(freq[bin]||0);
+    cx.fillRect(cv.width-colW, y, colW, 1);
+  }
+
+  let ev = events[0];
+  for(const e of events){ if(e.t<=now) ev = e; else break; }
+  if(ev.txt==='' && charTimes.length){
+    let i=0;
+    while(i<charTimes.length && charTimes[i]<=now) i++;
+    subs.innerHTML = '<span class="who">'+ev.who+':</span>'+escp(playText.slice(0,i))+'<span class="cur"></span>';
+  }else{
+    subs.innerHTML = '<span class="who">'+ev.who+':</span>'+escp(ev.txt);
+  }
+
+  setLed('OH', true);
+  setLed('CD', connected);
+  setLed('RD', playKind==='boot' && Math.sin(now*40)>0, true);
+  setLed('SD', playKind==='msg' && now<totalDur-0.7 && Math.sin(now*60)>0, true);
+
+  if(now < totalDur) requestAnimationFrame(frame);
+  else{
+    playing = false;
+    setLed('RD',false); setLed('SD',false);
+    if(playKind==='boot' && !connected){
+      connected = true;
+      connectedAt = Date.now();
+      document.getElementById('lnk').textContent = 'ONLINE';
+      txBtn.innerHTML = '<b>1</b>Transmit';
+    }
+    setLed('OH', connected); setLed('CD', connected);
+    txBtn.disabled = false;
+  }
+}
+
+/* ---------- playback ---------- */
+function play(o, kind){
+  events = o.events; charTimes = o.charTimes; totalDur = o.dur; playKind = kind;
+  playText = o.text || '';
+  if(!o.buf){ o.buf = actx.createBuffer(1, o.f32.length, SR); o.buf.copyToChannel(o.f32, 0); }
+  const src = actx.createBufferSource();
+  src.buffer = o.buf;
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.2;
+  freq = new Uint8Array(analyser.frequencyBinCount);
+  src.connect(analyser); analyser.connect(actx.destination);
+  cx.fillStyle = '#0000aa'; cx.fillRect(0,0,cv.width,cv.height);
+  playT0 = actx.currentTime + 0.05;
+  src.start(playT0);
+  playing = true;
+  txBtn.disabled = true;
+  requestAnimationFrame(frame);
+}
+
+/* ---------- controls ---------- */
+const txBtn = document.getElementById('tx'),
+      saveBtn = document.getElementById('save'),
+      shareBtn = document.getElementById('share'),
+      msgEl = document.getElementById('msg'),
+      spdEl = document.getElementById('spd'),
+      estEl = document.getElementById('est');
+
+function estimate(){
+  const spd = +spdEl.dataset.v;
+  let d = 0.9;
+  for(const ch of msgEl.value) d += (ch===' ' ? 0.115 : 0.06 + enc.encode(ch).length*0.028)/spd;
+  estEl.textContent = '≈ '+d.toFixed(1)+'s';
+}
+msgEl.addEventListener('input', estimate);
+estimate();
+
+const SPDS = [0.5, 1];
+spdEl.addEventListener('click', ()=>{
+  const i = (SPDS.indexOf(+spdEl.dataset.v)+1)%SPDS.length;
+  spdEl.dataset.v = SPDS[i];
+  spdEl.textContent = 'Speed:'+(SPDS[i]===0.5?'\u00bd':SPDS[i])+'x';
+  estimate();
+});
+
+txBtn.addEventListener('click', async ()=>{
+  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  await actx.resume();
+  if(!connected){
+    if(!boot) boot = synth('boot','',1);
+    play(boot, 'boot');
+    return;
+  }
+  const text = msgEl.value.trim();
+  if(!text){ msgEl.focus(); return; }
+  const spd = +spdEl.dataset.v, key = text+'|'+spd;
+  if(!msg || msg.key !== key){
+    msg = synth('msg', text, spd);
+    msg.key = key;
+    wavBlob = toWav(msg.f32);
+  }
+  play(msg, 'msg');
+  saveBtn.disabled = false;
+  shareBtn.disabled = false;
+});
+
+saveBtn.addEventListener('click', ()=>{
+  if(!wavBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(wavBlob);
+  a.download = 'handshake-message.wav';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+});
+
+shareBtn.addEventListener('click', async ()=>{
+  if(!wavBlob) return;
+  const file = new File([wavBlob], 'handshake-message.wav', {type:'audio/wav'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'handshake message'}); }catch(e){}
+  }else{
+    saveBtn.click();
+  }
+});
+
+/* menu */
+document.getElementById('mLine').addEventListener('click', async ()=>{
+  if(playing) return;
+  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  await actx.resume();
+  if(!boot) boot = synth('boot','',1);
+  play(boot, 'boot');
+});
+document.getElementById('mMsg').addEventListener('click', ()=>msgEl.focus());
+document.getElementById('mTx').addEventListener('click', ()=>{ if(!txBtn.disabled) txBtn.click(); });
+document.getElementById('mHelp').addEventListener('click', async ()=>{
+  if(playing) return;
+  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  await actx.resume();
+  if(!help) help = synth('msg', 'type message. 1 transmit. 2 save. 3 share. 4 speed. Line = redial.', 1, 'HELP');
+  play(help, 'msg');
+});
+
+/* keys */
+addEventListener('keydown', e=>{
+  if(e.target === msgEl) return;
+  const k = e.key;
+  if(k==='F1'||k==='1'){ e.preventDefault(); if(!txBtn.disabled) txBtn.click(); }
+  if(k==='F2'||k==='2'){ e.preventDefault(); if(!saveBtn.disabled) saveBtn.click(); }
+  if(k==='F3'||k==='3'){ e.preventDefault(); if(!shareBtn.disabled) shareBtn.click(); }
+  if(k==='F4'||k==='4'){ e.preventDefault(); spdEl.click(); }
+});
+
+/* quit easter egg + clocks */
+document.getElementById('fkq').addEventListener('click', ()=>{
+  subs.innerHTML = '<span class="who">SYS:</span>nice try. it is 1998 forever.';
+});
+function tickClock(){
+  const d = new Date();
+  document.getElementById('tclk').textContent =
+    String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+tickClock(); setInterval(tickClock, 15000);
+setInterval(()=>{
+  if(!connected) return;
+  const s = ((Date.now()-connectedAt)/1000)|0;
+  document.getElementById('clk').textContent =
+    String((s/60)|0).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}, 1000);
+</script>
+</body>
+</html>
