@@ -64,6 +64,15 @@
   .fi.playing{background:#001a9c;}
   .fi .ct{color:var(--dim);} .fi .pl{color:var(--mcyan); margin-left:6px;}
 
+  .lvl[hidden]{display:none;}
+  .big{display:block; width:100%; background:var(--mcyan); color:#000; border:none;
+    font:inherit; font-size:16px; padding:10px; cursor:pointer;}
+  .big:hover, .big:focus-visible{background:var(--cyan); outline:none;}
+  .hint{color:var(--dim); text-align:center; margin-top:6px;}
+  .klabel{color:var(--yel);}
+  .keyshow{flex:1; min-width:0; color:var(--cyan); background:#001877;
+    padding:5px 6px; overflow:auto; white-space:nowrap; user-select:all;}
+
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
   .cmd{display:flex; align-items:center; gap:6px; color:#fff; padding:2px 4px;}
@@ -107,19 +116,39 @@
 </fieldset>
 
 <fieldset><legend>C:\SECRET</legend>
-  <div class="row krow">
-    <label for="key">KEY:</label>
-    <input id="key" class="kin" maxlength="80" placeholder="paste a key to listen - or transmit to get one" aria-label="secret key">
-    <button class="fbtn" id="copyKey" type="button">COPY</button>
-    <button class="fbtn" id="newKey" type="button">NEW</button>
+  <!-- level 1: connect -->
+  <div class="lvl" id="lvlConnect">
+    <button class="big" id="connectBtn" type="button">► CONNECT</button>
+    <div class="hint">press 1 or tap to dial in</div>
   </div>
-  <textarea id="msg" maxlength="500" placeholder="secret message..."></textarea>
-  <div class="row frow">
-    <button class="fbtn" id="txBig" type="button">► TRANSMIT</button>
-    <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
-    <button class="fbtn" id="stopAll" type="button">■ STOP</button>
+  <!-- level 2: transmit or listen -->
+  <div class="lvl" id="lvlMenu" hidden>
+    <div class="row krow">
+      <input id="msgIn" class="kin" maxlength="500" placeholder="type your msg" aria-label="message to transmit">
+      <button class="fbtn" id="txBtn2" type="button">► TRANSMIT</button>
+    </div>
+    <div class="row krow">
+      <input id="keyIn" class="kin" maxlength="80" placeholder="enter key" aria-label="key to listen">
+      <button class="fbtn" id="listenBtn" type="button">► LISTEN</button>
+    </div>
   </div>
-  <div class="feed" id="feed"><div class="csys">paste a key + PLAY ALL to listen in, or TRANSMIT a secret to get one.</div></div>
+  <!-- level 3: transmission thread -->
+  <div class="lvl" id="lvlThread" hidden>
+    <div class="row krow">
+      <span class="klabel">KEY:</span><code class="keyshow" id="keyShow"></code>
+      <button class="fbtn" id="copyKey" type="button">COPY</button>
+      <button class="fbtn" id="newKey" type="button">NEW</button>
+    </div>
+    <div class="row krow">
+      <input id="replyIn" class="kin" maxlength="500" placeholder="type your msg" aria-label="reply">
+      <button class="fbtn" id="txBtn3" type="button">► TRANSMIT</button>
+    </div>
+    <div class="row frow">
+      <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
+      <button class="fbtn" id="stopAll" type="button">■ STOP</button>
+    </div>
+    <div class="feed" id="feed"></div>
+  </div>
 </fieldset>
 
 <div class="bottom">
@@ -374,6 +403,8 @@ function frame(){
       connectedAt = Date.now();
       document.getElementById('lnk').textContent = 'ONLINE';
       txBtn.innerHTML = '<b>1</b>Transmit';
+      setLevel();          // reveal the transmit / listen fields
+      msgIn.focus();
     }
     setLed('OH', connected); setLed('CD', connected);
     txBtn.disabled = false;
@@ -444,27 +475,35 @@ function genKey(){
   return s;   // e.g. K7F2-9XQ4-3MTL-8RVN  (~80 bits)
 }
 
-/* ---------- controls + secret thread ---------- */
+/* ---------- controls: three levels (connect / choose / thread) ---------- */
 const txBtn = document.getElementById('tx'),
-      txBig = document.getElementById('txBig'),
-      msgEl = document.getElementById('msg'),
-      keyEl = document.getElementById('key'),
+      connectBtn = document.getElementById('connectBtn'),
+      lvlConnect = document.getElementById('lvlConnect'),
+      lvlMenu = document.getElementById('lvlMenu'),
+      lvlThread = document.getElementById('lvlThread'),
+      msgIn = document.getElementById('msgIn'),
+      keyIn = document.getElementById('keyIn'),
+      replyIn = document.getElementById('replyIn'),
+      keyShowEl = document.getElementById('keyShow'),
       feedEl = document.getElementById('feed'),
-      copyBtn = document.getElementById('copyKey'),
-      newBtn = document.getElementById('newKey'),
       playAllBtn = document.getElementById('playAll'),
       stopBtn = document.getElementById('stopAll');
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function sys(t){ subs.innerHTML = '<span class="who">SYS:</span>'+escp(t); }
 
-let activeKey = (lsGet('hs_key') || '').trim();
-keyEl.value = activeKey;
-let activeChannel = null, lastId = 0;
+keyIn.value = (lsGet('hs_key') || '').trim();   // prefill last key for a quick re-listen
+let activeKey = '', activeChannel = null, lastId = 0;
 const feedCache = {};   // id -> synthesized result for replay
 const feedMsgs = [];    // the current key's transmissions, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
+function setLevel(){
+  const l = !connected ? 1 : (activeKey ? 3 : 2);
+  lvlConnect.hidden = l!==1;
+  lvlMenu.hidden = l!==2;
+  lvlThread.hidden = l!==3;
+}
 async function ensureAudio(){
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
@@ -521,93 +560,124 @@ async function pollThread(){
     if(!r.ok) throw 0;
     const j = await r.json();
     for(const m of (j.messages||[])) await addItem(m);
-    if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">no transmissions on this key yet.</div>';
+    if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">no transmissions on this key yet - TRANSMIT one.</div>';
   }catch(e){
     if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">BOARD OFFLINE - needs the deployed /api + KV store.</div>';
   }
 }
-async function loadThread(key){
+async function loadThread(key){     // -> level 3
   stopPlayback();
-  activeKey = (key||'').trim(); lsSet('hs_key', activeKey);
+  activeKey = (key||'').trim();
   feedMsgs.length = 0; lastId = 0;
-  if(!activeKey){ activeChannel = null; feedEl.innerHTML = '<div class="csys">paste a key + PLAY ALL to listen in, or TRANSMIT a secret to get one.</div>'; return; }
+  if(!activeKey){ activeChannel = null; setLevel(); return; }
+  lsSet('hs_key', activeKey);
+  keyShowEl.textContent = activeKey;
   feedEl.innerHTML = '<div class="csys">tuning in...</div>';
+  setLevel();
   activeChannel = await channelId(activeKey);
   pollThread();
 }
 
-async function onTransmit(){
-  if(playing) return;
+async function connect(){
+  if(playing || connected) return;
   await ensureAudio();
-  if(!connected){ if(!boot) boot = synth('boot','',1); play(boot, 'boot'); return; }
-  const text = msgEl.value.trim();
-  if(!text){ msgEl.focus(); return; }
-  let key = keyEl.value.trim();
-  const fresh = !key;
-  if(fresh){ key = genKey(); keyEl.value = key; }
-  if(fresh || key !== activeKey) await loadThread(key);   // switch to / create the thread
-  play(synth('msg', text, 1), 'msg');                     // hear your own plaintext
-  msgEl.value = '';                                        // ephemeral
+  if(!boot) boot = synth('boot','',1);
+  play(boot, 'boot');
+}
+async function sendUnder(key, text){
+  play(synth('msg', text, 1), 'msg');   // hear your own plaintext
   try{
     const r = await fetch('/api/messages', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ channel: await channelId(key), enc: await encMsg(key, text) })});
     if(r.ok) pollThread();
   }catch(e){}
-  if(fresh) sys('new KEY '+key+' - COPY (4) it and send it to your friend.');
+}
+async function doTransmitNew(){      // level 2: type a msg -> new keyed thread
+  if(playing) return;
+  await ensureAudio();
+  const text = msgIn.value.trim();
+  if(!text){ msgIn.focus(); return; }
+  const key = genKey();
+  await loadThread(key);
+  msgIn.value = '';
+  sendUnder(key, text);
+  sys('new KEY '+key+' - COPY it and send to your friend.');
+}
+async function doListen(){           // level 2: enter a key -> tune in
+  if(playing) return;
+  await ensureAudio();
+  const key = keyIn.value.trim();
+  if(!key){ keyIn.focus(); return; }
+  await loadThread(key);
+}
+async function doReply(){            // level 3: keep transmitting under the same key
+  if(playing || !activeKey) return;
+  await ensureAudio();
+  const text = replyIn.value.trim();
+  if(!text){ replyIn.focus(); return; }
+  replyIn.value = '';
+  sendUnder(activeKey, text);
+}
+function doNew(){                    // level 3 -> back to level 2
+  stopPlayback();
+  activeKey = ''; activeChannel = null; feedMsgs.length = 0; lastId = 0;
+  msgIn.value = ''; keyIn.value = '';
+  setLevel(); msgIn.focus();
 }
 async function doCopy(){
-  const v = keyEl.value.trim();
-  if(!v){ sys('no key yet - TRANSMIT a secret to make one.'); return; }
-  try{ await navigator.clipboard.writeText(v); sys('KEY copied - share it out of band.'); }
-  catch(e){ keyEl.focus(); keyEl.select(); sys('select + copy the KEY manually.'); }
+  if(!activeKey) return;
+  try{ await navigator.clipboard.writeText(activeKey); sys('KEY copied - share it out of band.'); }
+  catch(e){
+    const r = document.createRange(); r.selectNodeContents(keyShowEl);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    sys('select + copy the KEY.');
+  }
 }
-function doNew(){ const k = genKey(); keyEl.value = k; loadThread(k); sys('new KEY '+k+' - transmit a secret, then COPY + share.'); }
 
-txBtn.addEventListener('click', onTransmit);
-txBig.addEventListener('click', onTransmit);
-copyBtn.addEventListener('click', doCopy);
-newBtn.addEventListener('click', doNew);
+connectBtn.addEventListener('click', connect);
+document.getElementById('txBtn2').addEventListener('click', doTransmitNew);
+document.getElementById('txBtn3').addEventListener('click', doReply);
+document.getElementById('listenBtn').addEventListener('click', doListen);
+document.getElementById('copyKey').addEventListener('click', doCopy);
+document.getElementById('newKey').addEventListener('click', doNew);
 playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
 stopBtn.addEventListener('click', stopPlayback);
-let keyTimer = null;
-keyEl.addEventListener('input', ()=>{
-  lsSet('hs_key', keyEl.value.trim());
-  clearTimeout(keyTimer);
-  keyTimer = setTimeout(()=>loadThread(keyEl.value), 400);
-});
+msgIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doTransmitNew(); } });
+replyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doReply(); } });
+keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doListen(); } });
+
+/* bottom F-key bar + number keys, level-aware */
+function actTransmit(){ if(!connected) connect(); else if(activeKey) doReply(); else doTransmitNew(); }
+function actListen(){ if(activeKey) playAllBtn.click(); else if(connected) doListen(); }
+txBtn.addEventListener('click', actTransmit);
+document.getElementById('fListen').addEventListener('click', actListen);
+document.getElementById('fNew').addEventListener('click', ()=>{ if(activeKey) doNew(); });
+document.getElementById('fCopy').addEventListener('click', ()=>{ if(activeKey) doCopy(); });
 
 /* menu */
 document.getElementById('mLine').addEventListener('click', async ()=>{
-  if(playing) return;
-  await ensureAudio();
-  if(!boot) boot = synth('boot','',1);
-  play(boot, 'boot');
+  if(playing) return; await ensureAudio();
+  if(!boot) boot = synth('boot','',1); play(boot, 'boot');
 });
-document.getElementById('mTx').addEventListener('click', ()=>msgEl.focus());
-document.getElementById('mListen').addEventListener('click', ()=>keyEl.focus());
+document.getElementById('mTx').addEventListener('click', ()=>{ (activeKey?replyIn:msgIn).focus(); });
+document.getElementById('mListen').addEventListener('click', ()=>{ if(activeKey) playAllBtn.click(); else keyIn.focus(); });
 document.getElementById('mHelp').addEventListener('click', async ()=>{
-  if(playing) return;
-  await ensureAudio();
-  if(!help) help = synth('msg', 'type a secret, 1 transmit. you get a KEY - copy it (4) and send it to a friend out of band. they paste the key and 2 listen. only key holders can hear it. no key, no message.', 1, 'HELP');
+  if(playing) return; await ensureAudio();
+  if(!help) help = synth('msg', 'type a secret, transmit. you get a KEY - copy it and send to a friend out of band. they enter the key and listen. only key holders can hear it. no key, no message.', 1, 'HELP');
   play(help, 'msg');
 });
 
-/* start: if a key is saved, tune into its thread */
-if(activeKey) loadThread(activeKey);
-setInterval(()=>{ if(activeChannel && !playing) pollThread(); }, 4000);
-
-/* keys */
 addEventListener('keydown', e=>{
-  if(e.target === msgEl || e.target === keyEl) return;
+  if(e.target.tagName === 'INPUT') return;
   const k = e.key;
-  if(k==='F1'||k==='1'){ e.preventDefault(); onTransmit(); }
-  if(k==='F2'||k==='2'){ e.preventDefault(); playAllBtn.click(); }
-  if(k==='F3'||k==='3'){ e.preventDefault(); doNew(); }
-  if(k==='F4'||k==='4'){ e.preventDefault(); doCopy(); }
+  if(k==='F1'||k==='1'){ e.preventDefault(); actTransmit(); }
+  if(k==='F2'||k==='2'){ e.preventDefault(); actListen(); }
+  if(k==='F3'||k==='3'){ e.preventDefault(); if(activeKey) doNew(); }
+  if(k==='F4'||k==='4'){ e.preventDefault(); if(activeKey) doCopy(); }
 });
-document.getElementById('fListen').addEventListener('click', ()=>playAllBtn.click());
-document.getElementById('fNew').addEventListener('click', doNew);
-document.getElementById('fCopy').addEventListener('click', doCopy);
+
+setLevel();
+setInterval(()=>{ if(activeChannel && !playing) pollThread(); }, 4000);
 
 /* quit easter egg + clocks */
 document.getElementById('fkq').addEventListener('click', ()=>{
