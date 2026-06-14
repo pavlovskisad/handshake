@@ -45,22 +45,22 @@
   #spd:hover, #spd:focus-visible{background:var(--cyan); color:#000; outline:none;}
   .meta{margin-left:auto; color:#fff;}
 
-  .chatlog{height:188px; overflow-y:auto; border:1px solid var(--cyan); padding:4px 6px;
-    background:var(--blue); white-space:pre-wrap; word-break:break-word;}
-  .chatlog div{margin:1px 0;}
-  .chatlog .ct{color:var(--dim);}
-  .chatlog .ch{color:var(--yel);}
-  .chatlog .cb{color:var(--cyan);}
-  .chatlog .csys{color:var(--mcyan);}
-  .chatrow{margin-top:8px; gap:6px; flex-wrap:nowrap;}
-  .hin,.cin{background:var(--blue); color:var(--yel); border:1px solid var(--cyan);
-    padding:5px 6px; font:inherit; font-size:16px; min-width:0;}
-  .hin{width:100px; flex:none;} .cin{flex:1;}
-  .hin::placeholder,.cin::placeholder{color:var(--dim);}
-  .hin:focus,.cin:focus{outline:none; border-color:#fff;}
-  .cbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
-    padding:5px 12px; cursor:pointer; flex:none;}
-  .cbtn:hover, .cbtn:focus-visible{background:var(--cyan); outline:none;}
+  .feed{height:188px; overflow-y:auto; border:1px solid var(--cyan);
+    background:var(--blue); padding:2px;}
+  .feed .csys{color:var(--mcyan); padding:4px 6px;}
+  .fi{display:block; width:100%; text-align:left; background:none; border:none;
+    border-bottom:1px solid #001877; color:var(--cyan); font:inherit;
+    padding:4px 6px; cursor:pointer;}
+  .fi:hover, .fi:focus-visible{background:#001a9c; outline:none;}
+  .fi.playing{background:#001a9c;}
+  .fi .ct{color:var(--dim);} .fi .ch{color:var(--yel);} .fi .pl{color:var(--mcyan);}
+  .fi .cb{display:block; margin-top:2px; color:var(--cyan);
+    white-space:pre-wrap; word-break:break-word;}
+  .hrow{margin-top:8px; gap:8px; align-items:center;}
+  .hrow label{color:#fff;}
+  .hin{flex:1; min-width:0; background:var(--blue); color:var(--yel);
+    border:1px solid var(--cyan); padding:5px 6px; font:inherit; font-size:16px;}
+  .hin:focus{outline:none; border-color:#fff;}
 
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
@@ -83,7 +83,7 @@
 </head>
 <body>
 <div class="menu">
-  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mChat"><b>C</b>hat</span><span id="mHelp"><b>H</b>elp</span>
+  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mFeed"><b>F</b>eed</span><span id="mHelp"><b>H</b>elp</span>
   <span class="grow"></span><span class="tclk" id="tclk">00:00</span>
 </div>
 
@@ -103,12 +103,11 @@
   </div>
 </fieldset>
 
-<fieldset><legend>C:\CHATROOM</legend>
-  <div class="chatlog" id="chatlog"><div class="csys">BOARD: connecting...</div></div>
-  <div class="row chatrow">
+<fieldset><legend>C:\FEED</legend>
+  <div class="feed" id="feed"><div class="csys">BOARD: connecting...</div></div>
+  <div class="row hrow">
+    <label for="handle">HANDLE:</label>
     <input id="handle" class="hin" maxlength="16" aria-label="handle">
-    <input id="chatin" class="cin" maxlength="280" placeholder="message the board... (Enter)" aria-label="chat message">
-    <button id="csend" class="cbtn">Send</button>
   </div>
 </fieldset>
 
@@ -375,6 +374,7 @@ function frame(){
     }
     setLed('OH', connected); setLed('CD', connected);
     txBtn.disabled = false;
+    document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
   }
 }
 
@@ -442,6 +442,7 @@ txBtn.addEventListener('click', async ()=>{
   play(msg, 'msg');
   saveBtn.disabled = false;
   shareBtn.disabled = false;
+  postFeed(text, spd);   // transmit = broadcast to the shared board
 });
 
 saveBtn.addEventListener('click', ()=>{
@@ -472,21 +473,20 @@ document.getElementById('mLine').addEventListener('click', async ()=>{
   play(boot, 'boot');
 });
 document.getElementById('mMsg').addEventListener('click', ()=>msgEl.focus());
-document.getElementById('mChat').addEventListener('click', ()=>{
-  chatin.scrollIntoView({block:'center'}); chatin.focus();
+document.getElementById('mFeed').addEventListener('click', ()=>{
+  document.getElementById('feed').scrollIntoView({block:'center'});
 });
 document.getElementById('mTx').addEventListener('click', ()=>{ if(!txBtn.disabled) txBtn.click(); });
 document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return;
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
-  if(!help) help = synth('msg', 'type message. 1 transmit. 2 save. 3 share. 4 speed. Line = redial.', 1, 'HELP');
+  if(!help) help = synth('msg', 'type a message. 1 transmit broadcasts it to the feed. tap any feed line to replay it as modem audio. 2 save. 3 share. 4 speed.', 1, 'HELP');
   play(help, 'msg');
 });
 
-/* ---------- chatroom: shared anonymous BBS board via /api/messages ---------- */
-const chatlog = document.getElementById('chatlog'),
-      chatin = document.getElementById('chatin'),
+/* ---------- feed: shared board of modem transmissions via /api/messages ---------- */
+const feedEl = document.getElementById('feed'),
       handleEl = document.getElementById('handle');
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -500,57 +500,55 @@ handleEl.addEventListener('change', ()=>{
 });
 
 let lastId = 0, boardOK = false;
+const feedCache = {};   // id -> synthesized {f32,events,...} for replay
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-function renderMsgs(arr){
-  const atBottom = chatlog.scrollHeight - chatlog.scrollTop - chatlog.clientHeight < 30;
-  for(const m of arr){
-    if(!m || m.id<=lastId) continue;
-    lastId = m.id;
-    const line = document.createElement('div');
-    line.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> <span class="cb">'+escp(m.txt)+'</span>';
-    chatlog.appendChild(line);
-  }
-  if(atBottom) chatlog.scrollTop = chatlog.scrollHeight;
+
+async function playFeed(m, btn){
+  if(playing) return;
+  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  await actx.resume();
+  if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.txt, m.spd||1, m.who||'RX');
+  document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
+  if(btn) btn.classList.add('playing');
+  play(feedCache[m.id], 'msg');
 }
-function boardDown(text){
-  if(boardOK) return;
-  chatlog.innerHTML = '<div class="csys">'+text+'</div>';
+function addItem(m){
+  if(!m || m.id<=lastId) return;
+  lastId = m.id;
+  const atBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
+  const b = document.createElement('button');
+  b.className = 'fi'; b.type = 'button';
+  b.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> '
+    + '<span class="pl">► PLAY</span><span class="cb">'+escp(m.txt)+'</span>';
+  b.addEventListener('click', ()=>playFeed(m, b));
+  feedEl.appendChild(b);
+  if(atBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
-async function pollChat(){
+function boardDown(text){ if(!boardOK) feedEl.innerHTML = '<div class="csys">'+text+'</div>'; }
+async function pollFeed(){
   try{
     const r = await fetch('/api/messages?since='+lastId, {cache:'no-store'});
     if(!r.ok) throw 0;
     const j = await r.json();
-    if(!boardOK){ boardOK = true; chatlog.innerHTML = ''; }
-    renderMsgs(j.messages||[]);
+    if(!boardOK){ boardOK = true; feedEl.innerHTML = ''; }
+    (j.messages||[]).forEach(addItem);
   }catch(e){
-    boardDown('BOARD OFFLINE - needs the /api function + a KV store. Works once deployed to Vercel.');
+    boardDown('BOARD OFFLINE - transmit needs the deployed /api + KV store.');
   }
 }
-async function sendChat(){
-  const txt = chatin.value.trim();
-  if(!txt) return;
+async function postFeed(txt, spd){
   const who = (handleEl.value.trim() || 'GUEST').slice(0,16);
-  chatin.value = '';
   try{
     const r = await fetch('/api/messages', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, txt})});
-    if(!r.ok) throw 0;
-    pollChat();
-  }catch(e){
-    chatin.value = txt;
-    const w = document.createElement('div');
-    w.className = 'csys'; w.textContent = 'SEND FAILED - board offline.';
-    chatlog.appendChild(w); chatlog.scrollTop = chatlog.scrollHeight;
-  }
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, txt, spd})});
+    if(r.ok) pollFeed();
+  }catch(e){}
 }
-document.getElementById('csend').addEventListener('click', sendChat);
-chatin.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
-pollChat(); setInterval(pollChat, 4000);
+pollFeed(); setInterval(pollFeed, 4000);
 
 /* keys */
 addEventListener('keydown', e=>{
-  if(e.target === msgEl || e.target === chatin || e.target === handleEl) return;
+  if(e.target === msgEl || e.target === handleEl) return;
   const k = e.key;
   if(k==='F1'||k==='1'){ e.preventDefault(); if(!txBtn.disabled) txBtn.click(); }
   if(k==='F2'||k==='2'){ e.preventDefault(); if(!saveBtn.disabled) saveBtn.click(); }

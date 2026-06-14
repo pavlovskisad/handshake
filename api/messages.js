@@ -53,6 +53,7 @@ module.exports = async (req, res) => {
       body = body || {};
       const txt = clean(body.txt, MAX_TXT);
       const who = clean(body.who, MAX_WHO) || 'GUEST';
+      const spd = body.spd === 0.5 ? 0.5 : 1;   // transmission speed for replay
       if(!txt){ res.status(400).json({ error: 'empty' }); return; }
       // light rate limit: 5 posts / 10s per ip
       const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'anon';
@@ -60,7 +61,7 @@ module.exports = async (req, res) => {
       if(n === 1) await redis(['EXPIRE', 'rl:' + ip, '10']);
       if(n > 5){ res.status(429).json({ error: 'slow down' }); return; }
       const id = await redis(['INCR', SEQ]);
-      await redis(['RPUSH', ROOM, JSON.stringify({ id, t: Date.now(), who, txt })]);
+      await redis(['RPUSH', ROOM, JSON.stringify({ id, t: Date.now(), who, txt, spd })]);
       res.status(200).json({ ok: true, id });
       return;
     }

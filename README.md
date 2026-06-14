@@ -11,7 +11,7 @@ Norton Commander TUI skin. The frontend is `index.html` — open it in a browser
 - **Save / Share** — exports the message as a 44.1 kHz mono WAV; uses the native share sheet on mobile, download elsewhere.
 - **Help** — transmits its own key reference through the modem (eats its own dog food).
 - **Line** (menu) — redials the handshake on demand.
-- **Chat** — one shared, anonymous, never-deleted general room (a dial-up BBS board). Pick a handle, post a line, see everyone's history. Backed by `api/messages.js` + a Redis-compatible KV store. Falls back to `BOARD OFFLINE` when opened locally or before the store is provisioned, so the modem still works standalone.
+- **Feed** — a shared, anonymous, never-deleted board of modem transmissions. `Transmit` broadcasts your message to the feed; tap any line to replay it as real modem audio + spectrogram in the TERMINAL panel. Pick a handle for attribution. Backed by `api/messages.js` + a Redis-compatible KV store. Falls back to `BOARD OFFLINE` when opened locally or before the store is provisioned, so the modem still works standalone.
 
 Everything runs through a `lineize()` post-process: 250–3400 Hz telephone bandpass, tanh saturation, hiss bed, 50 Hz hum, random crackle — the glue that makes synthesized tones sound like copper.
 
