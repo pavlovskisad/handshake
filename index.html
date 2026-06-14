@@ -9,7 +9,7 @@
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{background:var(--blue); color:var(--cyan);
     font:14px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-  body{max-width:680px; margin:0 auto; padding:0 8px 80px;}
+  body{max-width:680px; margin:0 auto; padding:0 8px 80px; overflow-x:hidden;}
 
   .menu{display:flex; gap:12px; padding:1px 8px; background:#a8a8a8; color:#000;}
   .menu b{color:var(--red); font-weight:400;}
@@ -56,6 +56,11 @@
   .fi .ct{color:var(--dim);} .fi .ch{color:var(--yel);} .fi .pl{color:var(--mcyan);}
   .fi .cb{display:block; margin-top:2px; color:var(--cyan);
     white-space:pre-wrap; word-break:break-word;}
+  .frow{margin-top:8px; gap:6px; flex-wrap:wrap;}
+  .fbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
+    padding:4px 8px; cursor:pointer;}
+  .fbtn:hover, .fbtn:focus-visible{background:var(--cyan); outline:none;}
+  .fbtn:disabled{background:#006666; color:#004444; cursor:default;}
   .hrow{margin-top:8px; gap:8px; align-items:center;}
   .hrow label{color:#fff;}
   .hin{flex:1; min-width:0; background:var(--blue); color:var(--yel);
@@ -79,6 +84,15 @@
   .fk b{background:#000; color:#fff; font-weight:400; padding:0 2px; margin-right:1px;}
   .fk:hover:not(:disabled), .fk:focus-visible{background:var(--cyan); outline:none;}
   .fk:disabled{background:#006666; color:#004444; cursor:default;}
+
+  /* narrow screens: keep the menu + status bars on one line, no overflow */
+  @media (max-width:480px){
+    .menu{gap:6px;}
+    .menu .tclk{display:none;}
+    .cmd{gap:3px; font-size:13px;}
+    .cmd .prompt{display:none;}
+    .led{padding:0 1px;}
+  }
 </style>
 </head>
 <body>
@@ -105,6 +119,11 @@
 
 <fieldset><legend>C:\FEED</legend>
   <div class="feed" id="feed"><div class="csys">BOARD: connecting...</div></div>
+  <div class="row frow">
+    <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
+    <button class="fbtn" id="playLast" type="button">► LAST 10</button>
+    <button class="fbtn" id="stopAll" type="button">■ STOP</button>
+  </div>
   <div class="row hrow">
     <label for="handle">HANDLE:</label>
     <input id="handle" class="hin" maxlength="16" aria-label="handle">
@@ -112,7 +131,7 @@
 </fieldset>
 
 <div class="bottom">
-  <div class="cmd">C:\HANDSHAKE><span class="ccur">&nbsp;</span>
+  <div class="cmd"><span class="prompt">C:\HANDSHAKE></span><span class="ccur">&nbsp;</span>
     <span class="grow"></span>
     <span class="led" id="ledOH"><i></i>OH</span><span class="led" id="ledCD"><i></i>CD</span><span class="led" id="ledRD"><i></i>RD</span><span class="led" id="ledSD"><i></i>SD</span>
     <span class="sep">│</span><span id="lnk">OFFLINE</span>&nbsp;<span id="clk">00:00</span>
@@ -133,6 +152,7 @@ let actx = null, wavBlob = null, analyser = null, freq = null;
 let events = [], charTimes = [], totalDur = 0, playT0 = 0, playing = false, playKind = 'boot';
 let connected = false, connectedAt = 0;
 let boot = null, msg = null, help = null, playText = '';
+let curSrc = null, queue = [];   // queue drives PLAY ALL / LAST 10 of the feed
 
 /* ---------- synthesis ---------- */
 function env(a, n){
@@ -234,6 +254,11 @@ function lineize(x){ // copper line: bandpass 250-3400, saturation, hiss, hum, c
   }
   return x;
 }
+// per-char pitch: a pentatonic scale across the phone band so different
+// letters sing at different pitches -> different words sound different.
+// Deterministic (pure function of the char), per the "shareable signature" rule.
+const NOTES = [392,440,523,587,659,784,880,1046,1175,1318,1568,1760,2093];
+function pitch(c){ return NOTES[c % NOTES.length]; }
 function richChar(ch, wordN, spd){
   if(ch === ' ')
     return (wordN % 13 === 0) ? sweep(0.16/spd, 2400, 600, 0.3) : tone(0.09/spd, [1270], 0.28);
@@ -242,11 +267,12 @@ function richChar(ch, wordN, spd){
   if(DTMF[ch]) return tone(0.09/spd, DTMF[ch], 0.5);
   const bits = [];
   for(const b of enc.encode(ch)) bits.push(...byteBits(b));
-  switch(ch.codePointAt(0) % 4){
-    case 0: return fsk(bits, 300*spd, 1270, 1070, 0.45);
-    case 1: return fsk(bits, 600*spd, 1850, 1650, 0.45);
-    case 2: return fsk([...bits, ...bits, ...bits], 1200*spd, 2100, 1300, 0.45);
-    default: return psk(bits, 600*spd, 1800, 0.45);
+  const c = ch.codePointAt(0), f = pitch(c);
+  switch(c % 4){
+    case 0: return fsk(bits, 300*spd, f, f*0.84, 0.45);
+    case 1: return fsk(bits, 600*spd, f*1.06, f*0.92, 0.45);
+    case 2: return fsk([...bits, ...bits, ...bits], 1200*spd, f*1.18, f*0.8, 0.45);
+    default: return psk(bits, 600*spd, f, 0.45);
   }
 }
 
@@ -374,7 +400,9 @@ function frame(){
     }
     setLed('OH', connected); setLed('CD', connected);
     txBtn.disabled = false;
+    curSrc = null;
     document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
+    if(queue.length) playFromQueue();   // continue a PLAY ALL / LAST 10 run
   }
 }
 
@@ -391,6 +419,7 @@ function play(o, kind){
   freq = new Uint8Array(analyser.frequencyBinCount);
   src.connect(analyser); analyser.connect(actx.destination);
   cx.fillStyle = '#0000aa'; cx.fillRect(0,0,cv.width,cv.height);
+  curSrc = src;
   playT0 = actx.currentTime + 0.05;
   src.start(playT0);
   playing = true;
@@ -501,7 +530,9 @@ handleEl.addEventListener('change', ()=>{
 
 let lastId = 0, boardOK = false;
 const feedCache = {};   // id -> synthesized {f32,events,...} for replay
+const feedMsgs = [];    // every message currently in the feed, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function btnById(id){ return feedEl.querySelector('.fi[data-id="'+id+'"]'); }
 
 async function playFeed(m, btn){
   if(playing) return;
@@ -509,18 +540,39 @@ async function playFeed(m, btn){
   await actx.resume();
   if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.txt, m.spd||1, m.who||'RX');
   document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
-  if(btn) btn.classList.add('playing');
+  if(btn){ btn.classList.add('playing'); btn.scrollIntoView({block:'nearest'}); }
   play(feedCache[m.id], 'msg');
+}
+// PLAY ALL / LAST 10: walk a queue, advancing on each playback's completion (see frame())
+function playFromQueue(){
+  if(!queue.length) return;
+  const m = queue.shift();
+  playFeed(m, btnById(m.id));
+}
+function playSequence(msgs){
+  if(playing || !msgs.length) return;
+  queue = msgs.slice(1);
+  playFeed(msgs[0], btnById(msgs[0].id));
+}
+function stopPlayback(){
+  queue = [];
+  if(curSrc){ try{ curSrc.stop(); }catch(e){} curSrc = null; }
+  playing = false;
+  setLed('RD',false); setLed('SD',false);
+  setLed('OH', connected); setLed('CD', connected);
+  txBtn.disabled = false;
+  document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
 }
 function addItem(m){
   if(!m || m.id<=lastId) return;
   lastId = m.id;
+  feedMsgs.push(m);
   const atBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
   const b = document.createElement('button');
-  b.className = 'fi'; b.type = 'button';
+  b.className = 'fi'; b.type = 'button'; b.dataset.id = m.id;
   b.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> '
     + '<span class="pl">► PLAY</span><span class="cb">'+escp(m.txt)+'</span>';
-  b.addEventListener('click', ()=>playFeed(m, b));
+  b.addEventListener('click', ()=>{ stopPlayback(); playFeed(m, b); });
   feedEl.appendChild(b);
   if(atBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
@@ -544,6 +596,9 @@ async function postFeed(txt, spd){
     if(r.ok) pollFeed();
   }catch(e){}
 }
+document.getElementById('playAll').addEventListener('click', ()=>{ stopPlayback(); playSequence(feedMsgs); });
+document.getElementById('playLast').addEventListener('click', ()=>{ stopPlayback(); playSequence(feedMsgs.slice(-10)); });
+document.getElementById('stopAll').addEventListener('click', stopPlayback);
 pollFeed(); setInterval(pollFeed, 4000);
 
 /* keys */
