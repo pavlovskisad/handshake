@@ -4,7 +4,9 @@ Handoff for continuing work on HANDSHAKE. Read this first.
 
 ## What this is
 
-A single-file web toy: text → dial-up modem audio. `index.html` is the entire app — HTML, CSS, JS inline. No framework, no build step, no dependencies, no network calls. It must stay that way unless there's a strong reason; the self-contained single file is the point (easy to share, archive, drop on any host).
+A web toy: text → dial-up modem audio. `index.html` is the whole frontend — HTML, CSS, JS inline. No framework, no build step, no frontend dependencies. The modem half makes zero network calls and runs from a bare `file://` — keep it that way; the self-contained single file is the point (easy to share, archive, drop on any host).
+
+The one deliberate exception is the **chat board**: a shared, anonymous, persistent general room can't live in a static file, so it gets one zero-dependency serverless function (`api/messages.js`) talking to a Redis-compatible KV store. The frontend stays a single file and degrades to `BOARD OFFLINE` when the API isn't there, so the modem still works standalone. Don't add more network surface without a similarly strong reason.
 
 ## Working style (Pav)
 
@@ -35,13 +37,19 @@ A single-file web toy: text → dial-up modem audio. `index.html` is the entire 
 
 **State:** `connected` gates boot-vs-message. `boot`/`msg`/`help` cache synthesized results (re-synth only when text or speed changes). `playText` holds the string the typing subtitle reveals.
 
-**UI:** Norton Commander skin. Top menu (Line/Message/Transmit/Help — all tappable, work on mobile), two double-framed panels, bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + numbered F-key row. Number keys 1–4 are bound on desktop (ignored while typing in the textarea).
+**UI:** Norton Commander skin. Top menu (Line/Message/Transmit/Chat/Help — all tappable, work on mobile) is a gray Turbo-Vision menu bar (black text, red hotkeys, cyan selection), three double-framed panels (TERMINAL / MESSAGE / CHATROOM), bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + numbered F-key row. Number keys 1–4 are bound on desktop (ignored while typing in the textarea or chat inputs).
+
+**Chatroom (`index.html` JS + `api/messages.js`):**
+- Frontend: a `C:\CHATROOM` panel — scrollback `#chatlog`, an editable handle field (random retro handle, persisted in `localStorage` as `hs_handle`), a message input (Enter or Send). Polls `GET /api/messages?since=<lastId>` every 4 s and appends only ids it hasn't seen; auto-scrolls only when already at the bottom. All rendered text goes through `escp()` (XSS). On any fetch error it shows `BOARD OFFLINE` and keeps the modem usable.
+- Backend: `api/messages.js`, a Vercel Node serverless function, **no npm deps** — speaks to Vercel KV / Upstash over the Redis REST API via global `fetch`. `GET` returns the last 200 messages; `POST {who,txt}` validates (strip control chars, cap 280/16), rate-limits 5 posts / 10 s per IP, assigns a monotonic `id` via `INCR chat:seq`, `RPUSH`es onto `chat:general`. History is append-only — **never trimmed** (per spec). Env: `KV_REST_API_URL`/`KV_REST_API_TOKEN` or `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`.
 
 ## Conventions / gotchas
 
 - **Sample rate is 44100 everywhere.** AudioContext is constructed with `{sampleRate: SR}`. Don't mix rates.
 - **Audio needs a user gesture.** First sound must come from a click/tap (currently `1 Connect`). Don't try to autoplay on load.
-- **Textarea font is 16px on purpose** — anything smaller makes iOS Safari zoom on focus. Rest of the TUI is 14px. Keep it 16.
+- **Textarea + chat inputs are 16px on purpose** — anything smaller makes iOS Safari zoom on focus. Rest of the TUI is 14px. Keep inputs at 16.
+- **CP437 typography only in UI copy.** DOS can't render `—`, `…`, or curly quotes — use `-`, `...`, straight `'`. `→`, `½`, `≈`, `│` *are* CP437, fine to use. (Straight `'` inside a single-quoted JS string must be escaped: `let\'s`.)
+- **The chat board needs the deployed `/api` + a KV store.** It will read `BOARD OFFLINE` from `file://` or before the KV integration is connected — that's expected, not a bug. Provision KV in the Vercel dashboard (Storage → KV/Upstash) so the env vars get injected.
 - **`env()` everything** that starts/stops abruptly or you get clicks. `bong` intentionally skips the tail fade (it decays naturally).
 - **Rich mode is the only payload mode now.** The old handshake/pure-Bell-103 toggles and the explainer note were removed by request. If you re-add a "pure decodable" path, it's `fsk(bits, 300*spd, 1270, 1070)` over the whole message — that's what `minimodem --rx 300 -f file.wav` decodes.
 - **Speeds are ½x and 1x only** (`SPDS = [0.5, 1]`). Slower = each char is a distinct gesture, which Pav preferred over faster chatter.
@@ -57,10 +65,11 @@ Then open in a browser and actually listen — the audio is the product, lint ca
 
 ## Deploy
 
-Static, Vercel. `vercel --prod`. Vercel connector is available in this workspace.
+Vercel, zero build config — `index.html` static, `api/messages.js` auto-detected as a function. `vercel --prod`. **One-time:** add a KV/Upstash database in the project's Storage tab and redeploy, or the chat board stays `BOARD OFFLINE`. `vercel.json` sets clean URLs + cache headers; the function overrides with `Cache-Control: no-store`.
 
 ## v2 backlog (not started, rough priority)
 
+0. **Chat moderation/scale.** The board is live but raw: no moderation, append-only/never-trimmed storage, `GET` caps at 200. Add a delete/ban path and read pagination before it gets popular or abused.
 1. **Decoder mode.** Paste/drop a friend's WAV, demodulate it back to text. Closes the loop, makes it a two-player toy. Hardest part is FSK/PSK demod that tolerates the lineize coloration — may want a cleaner "decodable" TX variant for round-tripping vs the pretty rich TX.
 2. **WebM/video export.** Capture the spectrogram canvas + audio to a shareable clip (MediaRecorder + canvas.captureStream + a WebAudio MediaStreamDestination), so the *animation* shares, not just the WAV.
 3. **CP437 bitmap font** (Perfect DOS VGA 437 or similar) instead of system mono, for true DOS authenticity. Needs a bundled webfont — breaks the zero-asset single-file purity, so decide if that tradeoff is worth it.
@@ -69,4 +78,4 @@ Static, Vercel. `vercel --prod`. Vercel connector is available in this workspace
 
 ## History
 
-Built iteratively in a chat session: started as amber-oscilloscope text-to-Bell-103, went through "sounds like uniform noise" fixes (handshake pacing, inter-char rhythm), added the polyphonic voice palette, the lineize line coloration, speed control, then skinned amber → green CRT → flat tty → DOS comm program → Norton Commander. Last changes: connect-on-first-press flow (handshake as warm-up, not splash), removed toggles, 16px input, Help-as-transmission.
+Built iteratively in a chat session: started as amber-oscilloscope text-to-Bell-103, went through "sounds like uniform noise" fixes (handshake pacing, inter-char rhythm), added the polyphonic voice palette, the lineize line coloration, speed control, then skinned amber → green CRT → flat tty → DOS comm program → Norton Commander. Then: connect-on-first-press flow (handshake as warm-up, not splash), removed toggles, 16px input, Help-as-transmission. Latest: tightened the Norton skin (gray Turbo-Vision menu bar that was previously invisible black-on-blue, no textarea resize handle, tighter line-height, CP437 typography), and added the shared anonymous chat board (`api/messages.js` + KV) — the first networked feature.
