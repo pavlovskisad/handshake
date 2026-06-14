@@ -7,8 +7,8 @@
 //   *REST_API_URL  / *REST_API_TOKEN   (Vercel KV family, with/without prefix)
 //   *REDIS_REST_URL / *REDIS_REST_TOKEN (Upstash native)
 //
-// GET  /api/messages           -> { messages: [{id,t,who,txt}, ...] }  (last READ)
-// POST /api/messages {who,txt} -> { ok:true, id }
+// GET  /api/messages              -> { messages: [{id,t,who,enc,spd}, ...] }  (last READ)
+// POST /api/messages {who,enc,spd} -> { ok:true, id }   (enc = base64 ciphertext)
 // History is never trimmed (per spec); GET returns the most recent READ msgs.
 
 function findEnv(...patterns){
@@ -23,7 +23,8 @@ function findEnv(...patterns){
 const URL_ = findEnv(/REST_API_URL$/, /REDIS_REST_URL$/);
 const TOKEN = findEnv(/REST_API_TOKEN$/, /REDIS_REST_TOKEN$/);
 const ROOM = 'chat:general', SEQ = 'chat:seq';
-const READ = 200, MAX_TXT = 280, MAX_WHO = 16;
+// enc = base64 of (iv | AES-GCM ciphertext); the server only ever sees ciphertext
+const READ = 200, MAX_ENC = 2000, MAX_WHO = 16;
 
 async function redis(cmd){
   const r = await fetch(URL_, {
@@ -51,17 +52,17 @@ module.exports = async (req, res) => {
       let body = req.body;
       if(typeof body === 'string'){ try{ body = JSON.parse(body); }catch(e){ body = {}; } }
       body = body || {};
-      const txt = clean(body.txt, MAX_TXT);
+      const encd = clean(body.enc, MAX_ENC);
       const who = clean(body.who, MAX_WHO) || 'GUEST';
       const spd = body.spd === 0.5 ? 0.5 : 1;   // transmission speed for replay
-      if(!txt){ res.status(400).json({ error: 'empty' }); return; }
+      if(!encd){ res.status(400).json({ error: 'empty' }); return; }
       // light rate limit: 5 posts / 10s per ip
       const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'anon';
       const n = await redis(['INCR', 'rl:' + ip]);
       if(n === 1) await redis(['EXPIRE', 'rl:' + ip, '10']);
       if(n > 5){ res.status(429).json({ error: 'slow down' }); return; }
       const id = await redis(['INCR', SEQ]);
-      await redis(['RPUSH', ROOM, JSON.stringify({ id, t: Date.now(), who, txt, spd })]);
+      await redis(['RPUSH', ROOM, JSON.stringify({ id, t: Date.now(), who, enc: encd, spd })]);
       res.status(200).json({ ok: true, id });
       return;
     }

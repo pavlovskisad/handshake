@@ -56,6 +56,10 @@
   .fi .ct{color:var(--dim);} .fi .ch{color:var(--yel);} .fi .pl{color:var(--mcyan);}
   .fi .cb{display:block; margin-top:2px; color:var(--cyan);
     white-space:pre-wrap; word-break:break-word;}
+  .fi.locked .pl{color:var(--dim);}
+  .fi .cb.lk{color:#2a4bd0; letter-spacing:1px;}
+  .krow{margin-top:8px; gap:8px; align-items:center;}
+  .krow label{color:var(--yel);}
   .frow{margin-top:8px; gap:6px; flex-wrap:wrap;}
   .fbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
     padding:4px 8px; cursor:pointer;}
@@ -110,7 +114,7 @@
 </fieldset>
 
 <fieldset><legend>C:\MESSAGE</legend>
-  <textarea id="msg" maxlength="500" placeholder="привіт з 1998...">meet me in 1998</textarea>
+  <textarea id="msg" maxlength="500" placeholder="secret to encrypt + transmit...">meet me in 1998</textarea>
   <div class="row">
     <button id="spd" data-v="0.5" aria-label="payload speed">Speed:½x</button>
     <span class="meta" id="est"></span>
@@ -119,6 +123,10 @@
 
 <fieldset><legend>C:\FEED</legend>
   <div class="feed" id="feed"><div class="csys">BOARD: connecting...</div></div>
+  <div class="row krow">
+    <label for="key">KEY:</label>
+    <input id="key" class="hin" maxlength="64" placeholder="passphrase - locks what you send, unlocks what you can read" aria-label="encryption key">
+  </div>
   <div class="row frow">
     <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
     <button class="fbtn" id="playLast" type="button">► LAST 10</button>
@@ -462,16 +470,19 @@ txBtn.addEventListener('click', async ()=>{
   }
   const text = msgEl.value.trim();
   if(!text){ msgEl.focus(); return; }
-  const spd = +spdEl.dataset.v, key = text+'|'+spd;
-  if(!msg || msg.key !== key){
-    msg = synth('msg', text, spd);
-    msg.key = key;
-    wavBlob = toWav(msg.f32);
+  const pass = keyEl.value.trim();
+  if(!pass){
+    subs.innerHTML = '<span class="who">SYS:</span>set a KEY first - every transmission is encrypted.';
+    keyEl.scrollIntoView({block:'center'}); keyEl.focus(); return;
   }
+  const spd = +spdEl.dataset.v;
+  msg = synth('msg', text, spd);   // play your own message locally (you hold the plaintext)
+  wavBlob = toWav(msg.f32);
   play(msg, 'msg');
   saveBtn.disabled = false;
   shareBtn.disabled = false;
-  postFeed(text, spd);   // transmit = broadcast to the shared board
+  postFeed(text, spd, pass);       // encrypt + broadcast to the board
+  msgEl.value = ''; estimate();    // auto-clear: the plaintext is ephemeral
 });
 
 saveBtn.addEventListener('click', ()=>{
@@ -510,13 +521,14 @@ document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return;
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
-  if(!help) help = synth('msg', 'type a message. 1 transmit broadcasts it to the feed. tap any feed line to replay it as modem audio. 2 save. 3 share. 4 speed.', 1, 'HELP');
+  if(!help) help = synth('msg', 'set a KEY, type a message, 1 transmit. it is encrypted and broadcast to the feed. only people with the same KEY can unlock and hear it. share keys with friends. 2 save. 3 share. 4 speed.', 1, 'HELP');
   play(help, 'msg');
 });
 
-/* ---------- feed: shared board of modem transmissions via /api/messages ---------- */
+/* ---------- feed: shared board of ENCRYPTED modem transmissions ---------- */
 const feedEl = document.getElementById('feed'),
-      handleEl = document.getElementById('handle');
+      handleEl = document.getElementById('handle'),
+      keyEl = document.getElementById('key');
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 const HANDLES = ['NEON','ACID','TURBO','CYBER','RETRO','VAPOR','GHOST','MODEM','PIXEL','GLITCH','STATIC','CARRIER'];
@@ -528,20 +540,78 @@ handleEl.addEventListener('change', ()=>{
   lsSet('hs_handle', handleEl.value);
 });
 
+/* crypto: AES-GCM, key derived from the passphrase via PBKDF2. The salt is a
+   deterministic hash of the passphrase so anyone sharing the passphrase derives
+   the same key (symmetric); the per-message random IV is the "randomiser" that
+   makes identical messages encrypt differently. Real crypto, but a toy -
+   metadata (handle/time) is public and weak passphrases are guessable. */
+const keyCache = {};   // passphrase -> derived CryptoKey (enc is the global TextEncoder)
+function b64(u8){ let s=''; for(let i=0;i<u8.length;i++) s += String.fromCharCode(u8[i]); return btoa(s); }
+function ub64(s){ const bin=atob(s), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+async function aesKey(pass){
+  if(keyCache[pass]) return keyCache[pass];
+  const seed = await crypto.subtle.digest('SHA-256', enc.encode('handshake.v1:'+pass));
+  const km = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const k = await crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:new Uint8Array(seed), iterations:120000, hash:'SHA-256'},
+    km, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+  keyCache[pass] = k; return k;
+}
+async function encMsg(pass, text){
+  const iv = crypto.getRandomValues(new Uint8Array(12)), k = await aesKey(pass);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, k, enc.encode(text)));
+  const out = new Uint8Array(12+ct.length); out.set(iv,0); out.set(ct,12);
+  return b64(out);
+}
+async function decMsg(pass, payload){
+  try{
+    const raw = ub64(payload), iv = raw.slice(0,12), ct = raw.slice(12), k = await aesKey(pass);
+    return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct));
+  }catch(e){ return null; }   // wrong key / not yours
+}
+
+let feedKey = (lsGet('hs_key') || '').trim();
+keyEl.value = feedKey;
+keyEl.addEventListener('input', ()=>{ feedKey = keyEl.value.trim(); lsSet('hs_key', feedKey); relockAll(); });
+
 let lastId = 0, boardOK = false;
-const feedCache = {};   // id -> synthesized {f32,events,...} for replay
+const feedCache = {};   // cacheKey -> synthesized {f32,events,...} for replay
 const feedMsgs = [];    // every message currently in the feed, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function btnById(id){ return feedEl.querySelector('.fi[data-id="'+id+'"]'); }
+
+function paintItem(m){
+  const el = m.el; if(!el) return;
+  const head = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> ';
+  if(m.plain != null){
+    el.classList.remove('locked');
+    el.innerHTML = head + '<span class="pl">► PLAY</span><span class="cb">'+escp(m.plain)+'</span>';
+  }else{
+    el.classList.add('locked');
+    const n = Math.max(6, Math.min(40, ((m.enc||'').length/3)|0));
+    el.innerHTML = head + '<span class="pl">► LOCKED</span><span class="cb lk">'+'█'.repeat(n)+'</span>';
+  }
+}
+async function applyKey(m){
+  if(m.enc != null) m.plain = feedKey ? await decMsg(feedKey, m.enc) : null;
+  else m.plain = (m.txt != null ? m.txt : null);   // legacy plaintext posts
+  paintItem(m);
+}
+async function relockAll(){ for(const m of feedMsgs) await applyKey(m); }
 
 async function playFeed(m, btn){
   if(playing) return;
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
-  if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.txt, m.spd||1, m.who||'RX');
+  const unlocked = m.plain != null;
+  const ck = m.id + (unlocked ? '#p' : '#l');
+  if(!feedCache[ck]){
+    const body = unlocked ? m.plain : (m.enc||'').slice(0,16);   // locked: a short burst of the ciphertext
+    feedCache[ck] = synth('msg', body, m.spd||1, unlocked ? (m.who||'RX') : 'ENC');
+  }
   document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
   if(btn){ btn.classList.add('playing'); btn.scrollIntoView({block:'nearest'}); }
-  play(feedCache[m.id], 'msg');
+  play(feedCache[ck], 'msg');
 }
 // PLAY ALL / LAST 10: walk a queue, advancing on each playback's completion (see frame())
 function playFromQueue(){
@@ -569,11 +639,11 @@ function addItem(m){
   feedMsgs.push(m);
   const atBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
   const b = document.createElement('button');
-  b.className = 'fi'; b.type = 'button'; b.dataset.id = m.id;
-  b.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> '
-    + '<span class="pl">► PLAY</span><span class="cb">'+escp(m.txt)+'</span>';
+  b.className = 'fi'; b.type = 'button'; b.dataset.id = m.id; m.el = b;
   b.addEventListener('click', ()=>{ stopPlayback(); playFeed(m, b); });
   feedEl.appendChild(b);
+  paintItem(m);     // locked by default
+  applyKey(m);      // async: unlock if the current key fits
   if(atBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
 function boardDown(text){ if(!boardOK) feedEl.innerHTML = '<div class="csys">'+text+'</div>'; }
@@ -588,11 +658,12 @@ async function pollFeed(){
     boardDown('BOARD OFFLINE - transmit needs the deployed /api + KV store.');
   }
 }
-async function postFeed(txt, spd){
+async function postFeed(text, spd, pass){
   const who = (handleEl.value.trim() || 'GUEST').slice(0,16);
   try{
+    const ciph = await encMsg(pass, text);
     const r = await fetch('/api/messages', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, txt, spd})});
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, enc: ciph, spd})});
     if(r.ok) pollFeed();
   }catch(e){}
 }
@@ -603,7 +674,7 @@ pollFeed(); setInterval(pollFeed, 4000);
 
 /* keys */
 addEventListener('keydown', e=>{
-  if(e.target === msgEl || e.target === handleEl) return;
+  if(e.target === msgEl || e.target === handleEl || e.target === keyEl) return;
   const k = e.key;
   if(k==='F1'||k==='1'){ e.preventDefault(); if(!txBtn.disabled) txBtn.click(); }
   if(k==='F2'||k==='2'){ e.preventDefault(); if(!saveBtn.disabled) saveBtn.click(); }
