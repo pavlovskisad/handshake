@@ -1,16 +1,27 @@
 // Shared chatroom backend for HANDSHAKE - one append-only general room.
 // Zero dependencies: talks to a Redis-compatible REST store (Vercel KV or
-// Upstash) over fetch. Provision a KV/Upstash integration on Vercel and these
-// env vars are injected automatically:
-//   KV_REST_API_URL / KV_REST_API_TOKEN   (Vercel KV)
-//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash)
+// Upstash) over fetch. Provision a KV/Upstash integration on Vercel and the
+// REST creds are injected automatically. The integration may prefix the var
+// names (e.g. STORAGE_KV_REST_API_URL), so resolve them by suffix rather than
+// hard-coding KV_*/UPSTASH_* exactly:
+//   *REST_API_URL  / *REST_API_TOKEN   (Vercel KV family, with/without prefix)
+//   *REDIS_REST_URL / *REDIS_REST_TOKEN (Upstash native)
 //
 // GET  /api/messages           -> { messages: [{id,t,who,txt}, ...] }  (last READ)
 // POST /api/messages {who,txt} -> { ok:true, id }
 // History is never trimmed (per spec); GET returns the most recent READ msgs.
 
-const URL_ = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+function findEnv(...patterns){
+  const keys = Object.keys(process.env);
+  for(const re of patterns){
+    const k = keys.find(k => re.test(k) && process.env[k]);
+    if(k) return process.env[k];
+  }
+  return undefined;
+}
+// note: the read-only token ends in READ_ONLY_TOKEN, so /REST_API_TOKEN$/ skips it
+const URL_ = findEnv(/REST_API_URL$/, /REDIS_REST_URL$/);
+const TOKEN = findEnv(/REST_API_TOKEN$/, /REDIS_REST_TOKEN$/);
 const ROOM = 'chat:general', SEQ = 'chat:seq';
 const READ = 200, MAX_TXT = 280, MAX_WHO = 16;
 
