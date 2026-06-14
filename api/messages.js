@@ -1,0 +1,60 @@
+// Shared chatroom backend for HANDSHAKE - one append-only general room.
+// Zero dependencies: talks to a Redis-compatible REST store (Vercel KV or
+// Upstash) over fetch. Provision a KV/Upstash integration on Vercel and these
+// env vars are injected automatically:
+//   KV_REST_API_URL / KV_REST_API_TOKEN   (Vercel KV)
+//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash)
+//
+// GET  /api/messages           -> { messages: [{id,t,who,txt}, ...] }  (last READ)
+// POST /api/messages {who,txt} -> { ok:true, id }
+// History is never trimmed (per spec); GET returns the most recent READ msgs.
+
+const URL_ = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const ROOM = 'chat:general', SEQ = 'chat:seq';
+const READ = 200, MAX_TXT = 280, MAX_WHO = 16;
+
+async function redis(cmd){
+  const r = await fetch(URL_, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify(cmd)
+  });
+  if(!r.ok) throw new Error('store ' + r.status);
+  return (await r.json()).result;
+}
+// strip control chars, trim, cap length
+const clean = (s, n) => { let r = ""; for(const ch of String(s == null ? "" : s)){ const o = ch.codePointAt(0); if(o >= 32 && o !== 127) r += ch; } return r.trim().slice(0, n); };
+
+module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if(!URL_ || !TOKEN){ res.status(503).json({ error: 'no store configured' }); return; }
+  try{
+    if(req.method === 'GET'){
+      const raw = (await redis(['LRANGE', ROOM, '-' + READ, '-1'])) || [];
+      const messages = raw.map(s => { try{ return JSON.parse(s); }catch(e){ return null; } }).filter(Boolean);
+      res.status(200).json({ messages });
+      return;
+    }
+    if(req.method === 'POST'){
+      let body = req.body;
+      if(typeof body === 'string'){ try{ body = JSON.parse(body); }catch(e){ body = {}; } }
+      body = body || {};
+      const txt = clean(body.txt, MAX_TXT);
+      const who = clean(body.who, MAX_WHO) || 'GUEST';
+      if(!txt){ res.status(400).json({ error: 'empty' }); return; }
+      // light rate limit: 5 posts / 10s per ip
+      const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'anon';
+      const n = await redis(['INCR', 'rl:' + ip]);
+      if(n === 1) await redis(['EXPIRE', 'rl:' + ip, '10']);
+      if(n > 5){ res.status(429).json({ error: 'slow down' }); return; }
+      const id = await redis(['INCR', SEQ]);
+      await redis(['RPUSH', ROOM, JSON.stringify({ id, t: Date.now(), who, txt })]);
+      res.status(200).json({ ok: true, id });
+      return;
+    }
+    res.status(405).json({ error: 'method' });
+  }catch(e){
+    res.status(500).json({ error: 'store unavailable' });
+  }
+};

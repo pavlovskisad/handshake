@@ -3,21 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>HANDSHAKE — text → dial-up</title>
+<title>HANDSHAKE - text → dial-up</title>
 <style>
   :root{ --blue:#0000aa; --cyan:#55ffff; --mcyan:#00aaaa; --yel:#ffff55; --red:#ff5555; --dim:#3366cc; }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{background:var(--blue); color:var(--cyan);
-    font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+    font:14px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   body{max-width:680px; margin:0 auto; padding:0 8px 80px;}
 
-  .menu{display:flex; gap:16px; padding:2px 8px; color:#000;}
+  .menu{display:flex; gap:12px; padding:1px 8px; background:#a8a8a8; color:#000;}
   .menu b{color:var(--red); font-weight:400;}
-  .menu span{cursor:pointer; padding:0 3px; user-select:none;}
-  .menu span:active, .menu span:hover{background:#000; color:var(--cyan);}
+  .menu span{cursor:pointer; padding:0 4px; user-select:none;}
+  .menu span:active, .menu span:hover{background:var(--cyan); color:#000;}
   .menu .grow, .menu .tclk{cursor:default; background:none;}
-  .menu .tclk:hover{color:var(--cyan);}
-  .menu .tclk{color:var(--cyan);}
+  .menu .tclk, .menu .tclk:hover{color:#000; background:none;}
   .grow{flex:1;}
 
   fieldset{border:3px double var(--cyan); padding:8px; margin-top:10px;}
@@ -37,7 +36,7 @@
 
   textarea{display:block; width:100%; background:var(--blue); color:var(--yel);
     border:1px solid var(--cyan); padding:6px 8px; font:inherit; font-size:16px;
-    min-height:78px; resize:vertical; caret-color:var(--yel);}
+    min-height:78px; resize:none; caret-color:var(--yel);}
   textarea::placeholder{color:var(--dim);}
   textarea:focus{outline:none; border-color:#fff;}
 
@@ -45,6 +44,23 @@
   #spd{background:none; border:none; color:var(--yel); font:inherit; cursor:pointer; padding:0;}
   #spd:hover, #spd:focus-visible{background:var(--cyan); color:#000; outline:none;}
   .meta{margin-left:auto; color:#fff;}
+
+  .chatlog{height:188px; overflow-y:auto; border:1px solid var(--cyan); padding:4px 6px;
+    background:var(--blue); white-space:pre-wrap; word-break:break-word;}
+  .chatlog div{margin:1px 0;}
+  .chatlog .ct{color:var(--dim);}
+  .chatlog .ch{color:var(--yel);}
+  .chatlog .cb{color:var(--cyan);}
+  .chatlog .csys{color:var(--mcyan);}
+  .chatrow{margin-top:8px; gap:6px; flex-wrap:nowrap;}
+  .hin,.cin{background:var(--blue); color:var(--yel); border:1px solid var(--cyan);
+    padding:5px 6px; font:inherit; font-size:16px; min-width:0;}
+  .hin{width:100px; flex:none;} .cin{flex:1;}
+  .hin::placeholder,.cin::placeholder{color:var(--dim);}
+  .hin:focus,.cin:focus{outline:none; border-color:#fff;}
+  .cbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
+    padding:5px 12px; cursor:pointer; flex:none;}
+  .cbtn:hover, .cbtn:focus-visible{background:var(--cyan); outline:none;}
 
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
@@ -67,7 +83,7 @@
 </head>
 <body>
 <div class="menu">
-  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mHelp"><b>H</b>elp</span>
+  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mChat"><b>C</b>hat</span><span id="mHelp"><b>H</b>elp</span>
   <span class="grow"></span><span class="tclk" id="tclk">00:00</span>
 </div>
 
@@ -76,14 +92,23 @@
     <canvas id="spec"></canvas>
     <div class="khz">0-4 kHz</div>
   </div>
-  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE — press 1 Connect.</div>
+  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE - press 1 Connect.</div>
 </fieldset>
 
 <fieldset><legend>C:\MESSAGE</legend>
-  <textarea id="msg" maxlength="500" placeholder="привіт з 1998…">meet me in 1998</textarea>
+  <textarea id="msg" maxlength="500" placeholder="привіт з 1998...">meet me in 1998</textarea>
   <div class="row">
     <button id="spd" data-v="0.5" aria-label="payload speed">Speed:½x</button>
     <span class="meta" id="est"></span>
+  </div>
+</fieldset>
+
+<fieldset><legend>C:\CHATROOM</legend>
+  <div class="chatlog" id="chatlog"><div class="csys">BOARD: connecting...</div></div>
+  <div class="row chatrow">
+    <input id="handle" class="hin" maxlength="16" aria-label="handle">
+    <input id="chatin" class="cin" maxlength="280" placeholder="message the board... (Enter)" aria-label="chat message">
+    <button id="csend" class="cbtn">Send</button>
   </div>
 </fieldset>
 
@@ -234,25 +259,25 @@ function synth(mode, text, spd, label){
   const sub = (who, txt)=>ev.push({t, who, txt});
 
   if(mode === 'boot'){
-    sub('NET','dialing 1-9-9-8…');
+    sub('NET','dialing 1-9-9-8...');
     for(const d of '1998'){ add(tone(0.13, DTMF[d], 0.55)); add(silence(0.07)); }
     add(silence(0.35));
-    sub('NET','ringing…');
+    sub('NET','ringing...');
     add(tone(1.0,[440,480],0.22)); add(silence(0.4));
-    sub('ANSWER','modem here. network — kill your echo suppressors.');
+    sub('ANSWER','modem here. network - kill your echo suppressors.');
     add(ansam(2.3)); add(silence(0.25));
-    sub('CALLER','i speak V.90, V.34, V.32bis…');
+    sub('CALLER','i speak V.90, V.34, V.32bis...');
     add(fsk(rbits(220), 300, 1180, 980, 0.48)); add(silence(0.18));
-    sub('ANSWER','V.90. let’s go.');
+    sub('ANSWER','V.90. let\'s go.');
     add(fsk(rbits(150), 300, 1850, 1650, 0.48)); add(silence(0.25));
-    sub('BOTH','probing the line — which frequencies survive this copper?');
+    sub('BOTH','probing the line - which frequencies survive this copper?');
     add(bong(0.45, 850, 1633, 0.6)); add(silence(0.12));
     add(bong(0.45, 850, 1633, 0.6)); add(silence(0.15));
     add(tone(0.55,[150,750,1350,1950,2550,3150],0.6));
     add(sweep(0.6, 300, 3200, 0.4)); add(silence(0.2));
-    sub('BOTH','training equalizers on known garbage…');
+    sub('BOTH','training equalizers on known garbage...');
     add(noise(1.3, 0.33)); add(silence(0.3));
-    sub('LINK','CONNECT 57600 — line is yours.');
+    sub('LINK','CONNECT 57600 - line is yours.');
     add(silence(0.8));
   }else{
     sub(label,'');
@@ -264,7 +289,7 @@ function synth(mode, text, spd, label){
       add(silence(0.025/spd));
     }
     add(silence(0.2));
-    sub('LINE','TX complete — '+[...text].length+' chars OK.');
+    sub('LINE','TX complete - '+[...text].length+' chars OK.');
     add(silence(0.6));
   }
   const out = new Float32Array(Math.round(t*SR)+1);
@@ -447,6 +472,9 @@ document.getElementById('mLine').addEventListener('click', async ()=>{
   play(boot, 'boot');
 });
 document.getElementById('mMsg').addEventListener('click', ()=>msgEl.focus());
+document.getElementById('mChat').addEventListener('click', ()=>{
+  chatin.scrollIntoView({block:'center'}); chatin.focus();
+});
 document.getElementById('mTx').addEventListener('click', ()=>{ if(!txBtn.disabled) txBtn.click(); });
 document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return;
@@ -456,9 +484,73 @@ document.getElementById('mHelp').addEventListener('click', async ()=>{
   play(help, 'msg');
 });
 
+/* ---------- chatroom: shared anonymous BBS board via /api/messages ---------- */
+const chatlog = document.getElementById('chatlog'),
+      chatin = document.getElementById('chatin'),
+      handleEl = document.getElementById('handle');
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+const HANDLES = ['NEON','ACID','TURBO','CYBER','RETRO','VAPOR','GHOST','MODEM','PIXEL','GLITCH','STATIC','CARRIER'];
+function randHandle(){ return HANDLES[(Math.random()*HANDLES.length)|0] + ((Math.random()*900+100)|0); }
+handleEl.value = (lsGet('hs_handle') || randHandle()).slice(0,16);
+lsSet('hs_handle', handleEl.value);
+handleEl.addEventListener('change', ()=>{
+  handleEl.value = (handleEl.value.trim() || randHandle()).slice(0,16);
+  lsSet('hs_handle', handleEl.value);
+});
+
+let lastId = 0, boardOK = false;
+function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function renderMsgs(arr){
+  const atBottom = chatlog.scrollHeight - chatlog.scrollTop - chatlog.clientHeight < 30;
+  for(const m of arr){
+    if(!m || m.id<=lastId) continue;
+    lastId = m.id;
+    const line = document.createElement('div');
+    line.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> <span class="cb">'+escp(m.txt)+'</span>';
+    chatlog.appendChild(line);
+  }
+  if(atBottom) chatlog.scrollTop = chatlog.scrollHeight;
+}
+function boardDown(text){
+  if(boardOK) return;
+  chatlog.innerHTML = '<div class="csys">'+text+'</div>';
+}
+async function pollChat(){
+  try{
+    const r = await fetch('/api/messages?since='+lastId, {cache:'no-store'});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    if(!boardOK){ boardOK = true; chatlog.innerHTML = ''; }
+    renderMsgs(j.messages||[]);
+  }catch(e){
+    boardDown('BOARD OFFLINE - needs the /api function + a KV store. Works once deployed to Vercel.');
+  }
+}
+async function sendChat(){
+  const txt = chatin.value.trim();
+  if(!txt) return;
+  const who = (handleEl.value.trim() || 'GUEST').slice(0,16);
+  chatin.value = '';
+  try{
+    const r = await fetch('/api/messages', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, txt})});
+    if(!r.ok) throw 0;
+    pollChat();
+  }catch(e){
+    chatin.value = txt;
+    const w = document.createElement('div');
+    w.className = 'csys'; w.textContent = 'SEND FAILED - board offline.';
+    chatlog.appendChild(w); chatlog.scrollTop = chatlog.scrollHeight;
+  }
+}
+document.getElementById('csend').addEventListener('click', sendChat);
+chatin.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
+pollChat(); setInterval(pollChat, 4000);
+
 /* keys */
 addEventListener('keydown', e=>{
-  if(e.target === msgEl) return;
+  if(e.target === msgEl || e.target === chatin || e.target === handleEl) return;
   const k = e.key;
   if(k==='F1'||k==='1'){ e.preventDefault(); if(!txBtn.disabled) txBtn.click(); }
   if(k==='F2'||k==='2'){ e.preventDefault(); if(!saveBtn.disabled) saveBtn.click(); }

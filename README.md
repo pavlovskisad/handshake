@@ -1,8 +1,8 @@
 # HANDSHAKE
 
-Type text, hear it leave as a dial-up modem transmission. Live spectrogram, subtitled handshake play-by-play, share the audio to friends. One static HTML file, no build, no dependencies.
+Type text, hear it leave as a dial-up modem transmission. Live spectrogram, subtitled handshake play-by-play, share the audio to friends, and drop a line on the shared BBS board. The modem is a static HTML file with no build and no dependencies; the chat board adds one zero-dependency serverless function.
 
-Norton Commander TUI skin. The whole app is `index.html` — open it in a browser and it runs.
+Norton Commander TUI skin. The frontend is `index.html` — open it in a browser and the modem runs. The chat board lights up once deployed (it talks to `/api/messages`).
 
 ## What it does
 
@@ -11,6 +11,7 @@ Norton Commander TUI skin. The whole app is `index.html` — open it in a browse
 - **Save / Share** — exports the message as a 44.1 kHz mono WAV; uses the native share sheet on mobile, download elsewhere.
 - **Help** — transmits its own key reference through the modem (eats its own dog food).
 - **Line** (menu) — redials the handshake on demand.
+- **Chat** — one shared, anonymous, never-deleted general room (a dial-up BBS board). Pick a handle, post a line, see everyone's history. Backed by `api/messages.js` + a Redis-compatible KV store. Falls back to `BOARD OFFLINE` when opened locally or before the store is provisioned, so the modem still works standalone.
 
 Everything runs through a `lineize()` post-process: 250–3400 Hz telephone bandpass, tanh saturation, hiss bed, 50 Hz hum, random crackle — the glue that makes synthesized tones sound like copper.
 
@@ -21,15 +22,26 @@ open index.html          # macOS
 # or just drag it into a browser tab
 ```
 
-No server needed. Audio requires a user gesture (the `1 Connect` press) — browsers block autoplay, which is also period-correct.
+No server needed for the modem. Audio requires a user gesture (the `1 Connect` press) — browsers block autoplay, which is also period-correct. The chat board needs the deployed `/api` function; locally it shows `BOARD OFFLINE`.
 
 ## Deploy
 
-Static. Vercel picks it up with zero config:
+Vercel, zero build config. The modem (`index.html`) is static; `api/messages.js` is auto-detected as a serverless function.
 
 ```
 vercel            # preview
 vercel --prod     # production
 ```
 
-`vercel.json` only sets cache headers and clean URLs.
+**The chat board needs a Redis-compatible KV store.** One-time setup in the Vercel dashboard:
+
+1. Project → **Storage** → create a **KV / Upstash Redis** database and connect it to the project.
+2. That injects the env vars the function reads (`KV_REST_API_URL` + `KV_REST_API_TOKEN`, or the `UPSTASH_REDIS_REST_*` pair).
+3. Redeploy. The board goes live; until then the modem works and the board shows `BOARD OFFLINE`.
+
+`vercel.json` sets clean URLs and cache headers; the API function sends its own `Cache-Control: no-store`.
+
+### Notes / follow-ups
+
+- History is **append-only and never trimmed**; `GET /api/messages` returns the most recent 200. Add pagination if the room gets big.
+- Anonymous + public means no moderation yet. The function caps message length, strips control chars, and rate-limits to 5 posts / 10s per IP. A delete/ban path is a sensible next step.
