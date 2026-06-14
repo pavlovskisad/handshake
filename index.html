@@ -40,36 +40,29 @@
   textarea::placeholder{color:var(--dim);}
   textarea:focus{outline:none; border-color:#fff;}
 
-  .row{display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap;}
-  #spd{background:none; border:none; color:var(--yel); font:inherit; cursor:pointer; padding:0;}
-  #spd:hover, #spd:focus-visible{background:var(--cyan); color:#000; outline:none;}
-  .meta{margin-left:auto; color:#fff;}
+  .row{display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;}
 
-  .feed{height:188px; overflow-y:auto; border:1px solid var(--cyan);
-    background:var(--blue); padding:2px;}
+  .krow{margin-top:10px; gap:8px;}
+  .krow label{color:var(--yel);}
+  .kin{flex:1; min-width:0; background:var(--blue); color:var(--yel);
+    border:1px solid var(--cyan); padding:5px 6px; font:inherit; font-size:16px;}
+  .kin:focus{outline:none; border-color:#fff;}
+
+  .frow{margin-top:10px; gap:6px; flex-wrap:wrap;}
+  .fbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
+    padding:5px 10px; cursor:pointer;}
+  .fbtn:hover, .fbtn:focus-visible{background:var(--cyan); outline:none;}
+  .fbtn:disabled{background:#006666; color:#004444; cursor:default;}
+
+  .feed{height:150px; overflow-y:auto; border:1px solid var(--cyan);
+    margin-top:10px; background:var(--blue); padding:2px;}
   .feed .csys{color:var(--mcyan); padding:4px 6px;}
   .fi{display:block; width:100%; text-align:left; background:none; border:none;
     border-bottom:1px solid #001877; color:var(--cyan); font:inherit;
-    padding:4px 6px; cursor:pointer;}
+    padding:5px 6px; cursor:pointer;}
   .fi:hover, .fi:focus-visible{background:#001a9c; outline:none;}
   .fi.playing{background:#001a9c;}
-  .fi .ct{color:var(--dim);} .fi .ch{color:var(--yel);} .fi .pl{color:var(--mcyan);}
-  .fi .cb{display:block; margin-top:2px; color:var(--cyan);
-    white-space:pre-wrap; word-break:break-word;}
-  .fi.locked .pl{color:var(--dim);}
-  .fi .cb.lk{color:#2a4bd0; letter-spacing:1px;}
-  .krow{margin-top:8px; gap:8px; align-items:center;}
-  .krow label{color:var(--yel);}
-  .frow{margin-top:8px; gap:6px; flex-wrap:wrap;}
-  .fbtn{background:var(--mcyan); color:#000; border:none; font:inherit;
-    padding:4px 8px; cursor:pointer;}
-  .fbtn:hover, .fbtn:focus-visible{background:var(--cyan); outline:none;}
-  .fbtn:disabled{background:#006666; color:#004444; cursor:default;}
-  .hrow{margin-top:8px; gap:8px; align-items:center;}
-  .hrow label{color:#fff;}
-  .hin{flex:1; min-width:0; background:var(--blue); color:var(--yel);
-    border:1px solid var(--cyan); padding:5px 6px; font:inherit; font-size:16px;}
-  .hin:focus{outline:none; border-color:#fff;}
+  .fi .ct{color:var(--dim);} .fi .pl{color:var(--mcyan); margin-left:6px;}
 
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
@@ -101,7 +94,7 @@
 </head>
 <body>
 <div class="menu">
-  <span id="mLine"><b>L</b>ine</span><span id="mMsg"><b>M</b>essage</span><span id="mTx"><b>T</b>ransmit</span><span id="mFeed"><b>F</b>eed</span><span id="mHelp"><b>H</b>elp</span>
+  <span id="mLine"><b>L</b>ine</span><span id="mTx"><b>T</b>ransmit</span><span id="mListen"><b>L</b>isten</span><span id="mHelp"><b>H</b>elp</span>
   <span class="grow"></span><span class="tclk" id="tclk">00:00</span>
 </div>
 
@@ -113,29 +106,20 @@
   <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE - press 1 Connect.</div>
 </fieldset>
 
-<fieldset><legend>C:\MESSAGE</legend>
-  <textarea id="msg" maxlength="500" placeholder="secret to encrypt + transmit...">meet me in 1998</textarea>
-  <div class="row">
-    <button id="spd" data-v="0.5" aria-label="payload speed">Speed:½x</button>
-    <span class="meta" id="est"></span>
-  </div>
-</fieldset>
-
-<fieldset><legend>C:\FEED</legend>
-  <div class="feed" id="feed"><div class="csys">BOARD: connecting...</div></div>
+<fieldset><legend>C:\SECRET</legend>
   <div class="row krow">
     <label for="key">KEY:</label>
-    <input id="key" class="hin" maxlength="64" placeholder="passphrase - locks what you send, unlocks what you can read" aria-label="encryption key">
+    <input id="key" class="kin" maxlength="80" placeholder="paste a key to listen - or transmit to get one" aria-label="secret key">
+    <button class="fbtn" id="copyKey" type="button">COPY</button>
+    <button class="fbtn" id="newKey" type="button">NEW</button>
   </div>
+  <textarea id="msg" maxlength="500" placeholder="secret message..."></textarea>
   <div class="row frow">
+    <button class="fbtn" id="txBig" type="button">► TRANSMIT</button>
     <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
-    <button class="fbtn" id="playLast" type="button">► LAST 10</button>
     <button class="fbtn" id="stopAll" type="button">■ STOP</button>
   </div>
-  <div class="row hrow">
-    <label for="handle">HANDLE:</label>
-    <input id="handle" class="hin" maxlength="16" aria-label="handle">
-  </div>
+  <div class="feed" id="feed"><div class="csys">paste a key + PLAY ALL to listen in, or TRANSMIT a secret to get one.</div></div>
 </fieldset>
 
 <div class="bottom">
@@ -146,9 +130,9 @@
   </div>
   <div class="fkeys">
     <button class="fk" id="tx"><b>1</b>Connect</button>
-    <button class="fk" id="save" disabled><b>2</b>Save</button>
-    <button class="fk" id="share" disabled><b>3</b>Share</button>
-    <button class="fk" id="fkspd"><b>4</b>Speed</button>
+    <button class="fk" id="fListen"><b>2</b>Listen</button>
+    <button class="fk" id="fNew"><b>3</b>New key</button>
+    <button class="fk" id="fCopy"><b>4</b>Copy key</button>
     <button class="fk" id="fkq"><b>10</b>Quit</button>
   </div>
 </div>
@@ -156,11 +140,11 @@
 <script>
 const SR = 44100;
 const enc = new TextEncoder();
-let actx = null, wavBlob = null, analyser = null, freq = null;
+let actx = null, analyser = null, freq = null;
 let events = [], charTimes = [], totalDur = 0, playT0 = 0, playing = false, playKind = 'boot';
 let connected = false, connectedAt = 0;
-let boot = null, msg = null, help = null, playText = '';
-let curSrc = null, queue = [];   // queue drives PLAY ALL / LAST 10 of the feed
+let boot = null, help = null, playText = '';
+let curSrc = null, queue = [];   // queue drives PLAY ALL of a key's thread
 
 /* ---------- synthesis ---------- */
 function env(a, n){
@@ -331,21 +315,6 @@ function synth(mode, text, spd, label){
   return { f32: lineize(out), events: ev, charTimes: ct, dur: t, text: text, label: label };
 }
 
-/* ---------- wav ---------- */
-function toWav(f32){
-  const n = f32.length, b = new ArrayBuffer(44+n*2), v = new DataView(b);
-  const ws = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
-  ws(0,'RIFF'); v.setUint32(4,36+n*2,true); ws(8,'WAVEfmt ');
-  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
-  v.setUint32(24,SR,true); v.setUint32(28,SR*2,true); v.setUint16(32,2,true);
-  v.setUint16(34,16,true); ws(36,'data'); v.setUint32(40,n*2,true);
-  for(let i=0;i<n;i++){
-    const s = Math.max(-1, Math.min(1, f32[i]));
-    v.setInt16(44+i*2, s*32767, true);
-  }
-  return new Blob([b], {type:'audio/wav'});
-}
-
 /* ---------- spectrogram + subs ---------- */
 const cv = document.getElementById('spec'), cx = cv.getContext('2d');
 function fit(){
@@ -410,7 +379,7 @@ function frame(){
     txBtn.disabled = false;
     curSrc = null;
     document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
-    if(queue.length) playFromQueue();   // continue a PLAY ALL / LAST 10 run
+    if(queue.length) playFromQueue();   // continue a PLAY ALL run
   }
 }
 
@@ -435,119 +404,14 @@ function play(o, kind){
   requestAnimationFrame(frame);
 }
 
-/* ---------- controls ---------- */
-const txBtn = document.getElementById('tx'),
-      saveBtn = document.getElementById('save'),
-      shareBtn = document.getElementById('share'),
-      msgEl = document.getElementById('msg'),
-      spdEl = document.getElementById('spd'),
-      estEl = document.getElementById('est');
-
-function estimate(){
-  const spd = +spdEl.dataset.v;
-  let d = 0.9;
-  for(const ch of msgEl.value) d += (ch===' ' ? 0.115 : 0.06 + enc.encode(ch).length*0.028)/spd;
-  estEl.textContent = '≈ '+d.toFixed(1)+'s';
-}
-msgEl.addEventListener('input', estimate);
-estimate();
-
-const SPDS = [0.5, 1];
-spdEl.addEventListener('click', ()=>{
-  const i = (SPDS.indexOf(+spdEl.dataset.v)+1)%SPDS.length;
-  spdEl.dataset.v = SPDS[i];
-  spdEl.textContent = 'Speed:'+(SPDS[i]===0.5?'\u00bd':SPDS[i])+'x';
-  estimate();
-});
-
-txBtn.addEventListener('click', async ()=>{
-  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
-  await actx.resume();
-  if(!connected){
-    if(!boot) boot = synth('boot','',1);
-    play(boot, 'boot');
-    return;
-  }
-  const text = msgEl.value.trim();
-  if(!text){ msgEl.focus(); return; }
-  const pass = keyEl.value.trim();
-  if(!pass){
-    subs.innerHTML = '<span class="who">SYS:</span>set a KEY first - every transmission is encrypted.';
-    keyEl.scrollIntoView({block:'center'}); keyEl.focus(); return;
-  }
-  const spd = +spdEl.dataset.v;
-  msg = synth('msg', text, spd);   // play your own message locally (you hold the plaintext)
-  wavBlob = toWav(msg.f32);
-  play(msg, 'msg');
-  saveBtn.disabled = false;
-  shareBtn.disabled = false;
-  postFeed(text, spd, pass);       // encrypt + broadcast to the board
-  msgEl.value = ''; estimate();    // auto-clear: the plaintext is ephemeral
-});
-
-saveBtn.addEventListener('click', ()=>{
-  if(!wavBlob) return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(wavBlob);
-  a.download = 'handshake-message.wav';
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-});
-
-shareBtn.addEventListener('click', async ()=>{
-  if(!wavBlob) return;
-  const file = new File([wavBlob], 'handshake-message.wav', {type:'audio/wav'});
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file], title:'handshake message'}); }catch(e){}
-  }else{
-    saveBtn.click();
-  }
-});
-
-/* menu */
-document.getElementById('mLine').addEventListener('click', async ()=>{
-  if(playing) return;
-  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
-  await actx.resume();
-  if(!boot) boot = synth('boot','',1);
-  play(boot, 'boot');
-});
-document.getElementById('mMsg').addEventListener('click', ()=>msgEl.focus());
-document.getElementById('mFeed').addEventListener('click', ()=>{
-  document.getElementById('feed').scrollIntoView({block:'center'});
-});
-document.getElementById('mTx').addEventListener('click', ()=>{ if(!txBtn.disabled) txBtn.click(); });
-document.getElementById('mHelp').addEventListener('click', async ()=>{
-  if(playing) return;
-  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
-  await actx.resume();
-  if(!help) help = synth('msg', 'set a KEY, type a message, 1 transmit. it is encrypted and broadcast to the feed. only people with the same KEY can unlock and hear it. share keys with friends. 2 save. 3 share. 4 speed.', 1, 'HELP');
-  play(help, 'msg');
-});
-
-/* ---------- feed: shared board of ENCRYPTED modem transmissions ---------- */
-const feedEl = document.getElementById('feed'),
-      handleEl = document.getElementById('handle'),
-      keyEl = document.getElementById('key');
-function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
-function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
-const HANDLES = ['NEON','ACID','TURBO','CYBER','RETRO','VAPOR','GHOST','MODEM','PIXEL','GLITCH','STATIC','CARRIER'];
-function randHandle(){ return HANDLES[(Math.random()*HANDLES.length)|0] + ((Math.random()*900+100)|0); }
-handleEl.value = (lsGet('hs_handle') || randHandle()).slice(0,16);
-lsSet('hs_handle', handleEl.value);
-handleEl.addEventListener('change', ()=>{
-  handleEl.value = (handleEl.value.trim() || randHandle()).slice(0,16);
-  lsSet('hs_handle', handleEl.value);
-});
-
-/* crypto: AES-GCM, key derived from the passphrase via PBKDF2. The salt is a
-   deterministic hash of the passphrase so anyone sharing the passphrase derives
-   the same key (symmetric); the per-message random IV is the "randomiser" that
-   makes identical messages encrypt differently. Real crypto, but a toy -
-   metadata (handle/time) is public and weak passphrases are guessable. */
-const keyCache = {};   // passphrase -> derived CryptoKey (enc is the global TextEncoder)
+/* ---------- crypto: AES-GCM, key = PBKDF2(passphrase). Deterministic per-key
+   salt so two people sharing a key derive the same key (symmetric); random IV
+   per message is the "randomiser". Real crypto, but a toy - timestamps are
+   public and weak keys are guessable. ---------- */
+const keyCache = {};   // key string -> derived CryptoKey (enc is the global TextEncoder)
 function b64(u8){ let s=''; for(let i=0;i<u8.length;i++) s += String.fromCharCode(u8[i]); return btoa(s); }
 function ub64(s){ const bin=atob(s), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+function b64url(u8){ return b64(u8).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 async function aesKey(pass){
   if(keyCache[pass]) return keyCache[pass];
   const seed = await crypto.subtle.digest('SHA-256', enc.encode('handshake.v1:'+pass));
@@ -567,62 +431,43 @@ async function decMsg(pass, payload){
   try{
     const raw = ub64(payload), iv = raw.slice(0,12), ct = raw.slice(12), k = await aesKey(pass);
     return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv}, k, ct));
-  }catch(e){ return null; }   // wrong key / not yours
+  }catch(e){ return null; }   // wrong key
+}
+// the channel a key listens on = a public hash of the key (server never sees the key)
+async function channelId(pass){
+  const h = await crypto.subtle.digest('SHA-256', enc.encode('handshake.ch:'+pass));
+  return b64url(new Uint8Array(h)).slice(0,24);
+}
+function genKey(){
+  const a = crypto.getRandomValues(new Uint8Array(16)), A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s=''; for(let i=0;i<a.length;i++){ s += A[a[i] % 32]; if(i%4===3 && i<a.length-1) s += '-'; }
+  return s;   // e.g. K7F2-9XQ4-3MTL-8RVN  (~80 bits)
 }
 
-let feedKey = (lsGet('hs_key') || '').trim();
-keyEl.value = feedKey;
-keyEl.addEventListener('input', ()=>{ feedKey = keyEl.value.trim(); lsSet('hs_key', feedKey); relockAll(); });
+/* ---------- controls + secret thread ---------- */
+const txBtn = document.getElementById('tx'),
+      txBig = document.getElementById('txBig'),
+      msgEl = document.getElementById('msg'),
+      keyEl = document.getElementById('key'),
+      feedEl = document.getElementById('feed'),
+      copyBtn = document.getElementById('copyKey'),
+      newBtn = document.getElementById('newKey'),
+      playAllBtn = document.getElementById('playAll'),
+      stopBtn = document.getElementById('stopAll');
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function sys(t){ subs.innerHTML = '<span class="who">SYS:</span>'+escp(t); }
 
-let lastId = 0, boardOK = false;
-const feedCache = {};   // cacheKey -> synthesized {f32,events,...} for replay
-const feedMsgs = [];    // every message currently in the feed, in order
+let activeKey = (lsGet('hs_key') || '').trim();
+keyEl.value = activeKey;
+let activeChannel = null, lastId = 0;
+const feedCache = {};   // id -> synthesized result for replay
+const feedMsgs = [];    // the current key's transmissions, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-function btnById(id){ return feedEl.querySelector('.fi[data-id="'+id+'"]'); }
 
-function paintItem(m){
-  const el = m.el; if(!el) return;
-  const head = '<span class="ct">['+hhmm(m.t)+']</span> <span class="ch">'+escp(m.who)+'</span> ';
-  if(m.plain != null){
-    el.classList.remove('locked');
-    el.innerHTML = head + '<span class="pl">► PLAY</span><span class="cb">'+escp(m.plain)+'</span>';
-  }else{
-    el.classList.add('locked');
-    const n = Math.max(6, Math.min(40, ((m.enc||'').length/3)|0));
-    el.innerHTML = head + '<span class="pl">► LOCKED</span><span class="cb lk">'+'█'.repeat(n)+'</span>';
-  }
-}
-async function applyKey(m){
-  if(m.enc != null) m.plain = feedKey ? await decMsg(feedKey, m.enc) : null;
-  else m.plain = (m.txt != null ? m.txt : null);   // legacy plaintext posts
-  paintItem(m);
-}
-async function relockAll(){ for(const m of feedMsgs) await applyKey(m); }
-
-async function playFeed(m, btn){
-  if(playing) return;
+async function ensureAudio(){
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
-  const unlocked = m.plain != null;
-  const ck = m.id + (unlocked ? '#p' : '#l');
-  if(!feedCache[ck]){
-    const body = unlocked ? m.plain : (m.enc||'').slice(0,16);   // locked: a short burst of the ciphertext
-    feedCache[ck] = synth('msg', body, m.spd||1, unlocked ? (m.who||'RX') : 'ENC');
-  }
-  document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
-  if(btn){ btn.classList.add('playing'); btn.scrollIntoView({block:'nearest'}); }
-  play(feedCache[ck], 'msg');
-}
-// PLAY ALL / LAST 10: walk a queue, advancing on each playback's completion (see frame())
-function playFromQueue(){
-  if(!queue.length) return;
-  const m = queue.shift();
-  playFeed(m, btnById(m.id));
-}
-function playSequence(msgs){
-  if(playing || !msgs.length) return;
-  queue = msgs.slice(1);
-  playFeed(msgs[0], btnById(msgs[0].id));
 }
 function stopPlayback(){
   queue = [];
@@ -633,54 +478,136 @@ function stopPlayback(){
   txBtn.disabled = false;
   document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
 }
-function addItem(m){
+
+async function playOne(m, btn){
+  if(playing) return;
+  await ensureAudio();
+  if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.plain, 1, 'RX');
+  document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
+  if(btn){ btn.classList.add('playing'); btn.scrollIntoView({block:'nearest'}); }
+  play(feedCache[m.id], 'msg');
+}
+function playFromQueue(){            // continues a PLAY ALL run (called from frame())
+  if(!queue.length) return;
+  const m = queue.shift();
+  playOne(m, m.el);
+}
+function playSequence(msgs){
+  if(playing || !msgs.length) return;
+  queue = msgs.slice(1);
+  playOne(msgs[0], msgs[0].el);
+}
+
+async function addItem(m){
   if(!m || m.id<=lastId) return;
   lastId = m.id;
+  const plain = await decMsg(activeKey, m.enc);
+  if(plain == null) return;          // not for this key - skip
+  m.plain = plain;
   feedMsgs.push(m);
+  const ph = feedEl.querySelector('.csys'); if(ph) ph.remove();
   const atBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
   const b = document.createElement('button');
-  b.className = 'fi'; b.type = 'button'; b.dataset.id = m.id; m.el = b;
-  b.addEventListener('click', ()=>{ stopPlayback(); playFeed(m, b); });
+  b.className = 'fi'; b.type = 'button'; m.el = b;
+  b.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span><span class="pl">► PLAY</span>';
+  b.addEventListener('click', ()=>{ stopPlayback(); playOne(m, b); });
   feedEl.appendChild(b);
-  paintItem(m);     // locked by default
-  applyKey(m);      // async: unlock if the current key fits
   if(atBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
-function boardDown(text){ if(!boardOK) feedEl.innerHTML = '<div class="csys">'+text+'</div>'; }
-async function pollFeed(){
+async function pollThread(){
+  if(!activeChannel) return;
   try{
-    const r = await fetch('/api/messages?since='+lastId, {cache:'no-store'});
+    const r = await fetch('/api/messages?channel='+encodeURIComponent(activeChannel)+'&since='+lastId, {cache:'no-store'});
     if(!r.ok) throw 0;
     const j = await r.json();
-    if(!boardOK){ boardOK = true; feedEl.innerHTML = ''; }
-    (j.messages||[]).forEach(addItem);
+    for(const m of (j.messages||[])) await addItem(m);
+    if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">no transmissions on this key yet.</div>';
   }catch(e){
-    boardDown('BOARD OFFLINE - transmit needs the deployed /api + KV store.');
+    if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">BOARD OFFLINE - needs the deployed /api + KV store.</div>';
   }
 }
-async function postFeed(text, spd, pass){
-  const who = (handleEl.value.trim() || 'GUEST').slice(0,16);
-  try{
-    const ciph = await encMsg(pass, text);
-    const r = await fetch('/api/messages', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify({who, enc: ciph, spd})});
-    if(r.ok) pollFeed();
-  }catch(e){}
+async function loadThread(key){
+  stopPlayback();
+  activeKey = (key||'').trim(); lsSet('hs_key', activeKey);
+  feedMsgs.length = 0; lastId = 0;
+  if(!activeKey){ activeChannel = null; feedEl.innerHTML = '<div class="csys">paste a key + PLAY ALL to listen in, or TRANSMIT a secret to get one.</div>'; return; }
+  feedEl.innerHTML = '<div class="csys">tuning in...</div>';
+  activeChannel = await channelId(activeKey);
+  pollThread();
 }
-document.getElementById('playAll').addEventListener('click', ()=>{ stopPlayback(); playSequence(feedMsgs); });
-document.getElementById('playLast').addEventListener('click', ()=>{ stopPlayback(); playSequence(feedMsgs.slice(-10)); });
-document.getElementById('stopAll').addEventListener('click', stopPlayback);
-pollFeed(); setInterval(pollFeed, 4000);
+
+async function onTransmit(){
+  if(playing) return;
+  await ensureAudio();
+  if(!connected){ if(!boot) boot = synth('boot','',1); play(boot, 'boot'); return; }
+  const text = msgEl.value.trim();
+  if(!text){ msgEl.focus(); return; }
+  let key = keyEl.value.trim();
+  const fresh = !key;
+  if(fresh){ key = genKey(); keyEl.value = key; }
+  if(fresh || key !== activeKey) await loadThread(key);   // switch to / create the thread
+  play(synth('msg', text, 1), 'msg');                     // hear your own plaintext
+  msgEl.value = '';                                        // ephemeral
+  try{
+    const r = await fetch('/api/messages', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ channel: await channelId(key), enc: await encMsg(key, text) })});
+    if(r.ok) pollThread();
+  }catch(e){}
+  if(fresh) sys('new KEY '+key+' - COPY (4) it and send it to your friend.');
+}
+async function doCopy(){
+  const v = keyEl.value.trim();
+  if(!v){ sys('no key yet - TRANSMIT a secret to make one.'); return; }
+  try{ await navigator.clipboard.writeText(v); sys('KEY copied - share it out of band.'); }
+  catch(e){ keyEl.focus(); keyEl.select(); sys('select + copy the KEY manually.'); }
+}
+function doNew(){ const k = genKey(); keyEl.value = k; loadThread(k); sys('new KEY '+k+' - transmit a secret, then COPY + share.'); }
+
+txBtn.addEventListener('click', onTransmit);
+txBig.addEventListener('click', onTransmit);
+copyBtn.addEventListener('click', doCopy);
+newBtn.addEventListener('click', doNew);
+playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
+stopBtn.addEventListener('click', stopPlayback);
+let keyTimer = null;
+keyEl.addEventListener('input', ()=>{
+  lsSet('hs_key', keyEl.value.trim());
+  clearTimeout(keyTimer);
+  keyTimer = setTimeout(()=>loadThread(keyEl.value), 400);
+});
+
+/* menu */
+document.getElementById('mLine').addEventListener('click', async ()=>{
+  if(playing) return;
+  await ensureAudio();
+  if(!boot) boot = synth('boot','',1);
+  play(boot, 'boot');
+});
+document.getElementById('mTx').addEventListener('click', ()=>msgEl.focus());
+document.getElementById('mListen').addEventListener('click', ()=>keyEl.focus());
+document.getElementById('mHelp').addEventListener('click', async ()=>{
+  if(playing) return;
+  await ensureAudio();
+  if(!help) help = synth('msg', 'type a secret, 1 transmit. you get a KEY - copy it (4) and send it to a friend out of band. they paste the key and 2 listen. only key holders can hear it. no key, no message.', 1, 'HELP');
+  play(help, 'msg');
+});
+
+/* start: if a key is saved, tune into its thread */
+if(activeKey) loadThread(activeKey);
+setInterval(()=>{ if(activeChannel && !playing) pollThread(); }, 4000);
 
 /* keys */
 addEventListener('keydown', e=>{
-  if(e.target === msgEl || e.target === handleEl || e.target === keyEl) return;
+  if(e.target === msgEl || e.target === keyEl) return;
   const k = e.key;
-  if(k==='F1'||k==='1'){ e.preventDefault(); if(!txBtn.disabled) txBtn.click(); }
-  if(k==='F2'||k==='2'){ e.preventDefault(); if(!saveBtn.disabled) saveBtn.click(); }
-  if(k==='F3'||k==='3'){ e.preventDefault(); if(!shareBtn.disabled) shareBtn.click(); }
-  if(k==='F4'||k==='4'){ e.preventDefault(); spdEl.click(); }
+  if(k==='F1'||k==='1'){ e.preventDefault(); onTransmit(); }
+  if(k==='F2'||k==='2'){ e.preventDefault(); playAllBtn.click(); }
+  if(k==='F3'||k==='3'){ e.preventDefault(); doNew(); }
+  if(k==='F4'||k==='4'){ e.preventDefault(); doCopy(); }
 });
+document.getElementById('fListen').addEventListener('click', ()=>playAllBtn.click());
+document.getElementById('fNew').addEventListener('click', doNew);
+document.getElementById('fCopy').addEventListener('click', doCopy);
 
 /* quit easter egg + clocks */
 document.getElementById('fkq').addEventListener('click', ()=>{
