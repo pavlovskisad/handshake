@@ -6,9 +6,11 @@ Norton Commander TUI skin, live spectrogram. The frontend is one `index.html`; o
 
 ## What it does
 
-- **Connect** — first press of `1` runs the classic handshake (DTMF dial, ring, ANSam answer tone, V.8 chirps, double bong, line probe sweep, equalizer training noise), subtitled stage by stage, ending on `CONNECT 57600`.
-- **Transmit** — type a secret and `1`. It's AES-GCM encrypted in the browser and sent; you hear your own plaintext play out as modem audio. If no key is set, a strong one is **generated** — `COPY` it and send it to a friend out of band. The textarea auto-clears; the plaintext is ephemeral.
-- **Listen** — paste a key into `KEY` and `► PLAY ALL`. You tune into that key's thread and hear each transmission as real modem audio, reading it off the subtitles. Items are play-only — nothing is printed in full.
+The `C:\SECRET` panel walks three levels: **connect → choose → thread.**
+
+- **Connect** — press `1` / tap `► CONNECT` to run the classic handshake (DTMF dial, ring, ANSam answer tone, V.8 chirps, double bong, line probe sweep, equalizer training noise), subtitled stage by stage, ending on `CONNECT 57600`.
+- **Transmit** — once connected you get two fields. Type a secret + `► TRANSMIT`: it's AES-GCM encrypted in the browser and sent, a strong key is **generated**, and you drop into that thread. `COPY` the key and send it to a friend out of band. You can keep transmitting under the same key.
+- **Listen** — or enter a key + `► LISTEN` to tune into that key's thread. `► PLAY ALL` plays each transmission as real modem audio; you read it off the subtitles. Play-only — nothing is printed in full.
 - **Help / Line** (menu) — Help transmits its own reference; Line redials the handshake.
 
 Each character is encoded through a rotating palette of real modem modulations (Bell 103 FSK, V.21, V.23, V.22-style PSK) with a per-character pitch, then run through a `lineize()` post-process (250–3400 Hz bandpass, saturation, hiss, hum, crackle) so it sounds like copper. Deterministic: the same text always sounds the same.
