@@ -6,7 +6,7 @@ Handoff for continuing work on HANDSHAKE. Read this first.
 
 A web toy: text → dial-up modem audio. `index.html` is the whole frontend — HTML, CSS, JS inline. No framework, no build step, no frontend dependencies. The modem half makes zero network calls and runs from a bare `file://` — keep it that way; the self-contained single file is the point (easy to share, archive, drop on any host).
 
-The one deliberate exception is the **chat board**: a shared, anonymous, persistent general room can't live in a static file, so it gets one zero-dependency serverless function (`api/messages.js`) talking to a Redis-compatible KV store. The frontend stays a single file and degrades to `BOARD OFFLINE` when the API isn't there, so the modem still works standalone. Don't add more network surface without a similarly strong reason.
+The one deliberate exception is the **feed**: a shared, anonymous, persistent board of modem transmissions can't live in a static file, so it gets one zero-dependency serverless function (`api/messages.js`) talking to a Redis-compatible KV store. The frontend stays a single file and degrades to `BOARD OFFLINE` when the API isn't there, so the modem still works standalone. Don't add more network surface without a similarly strong reason.
 
 ## Working style (Pav)
 
@@ -37,11 +37,11 @@ The one deliberate exception is the **chat board**: a shared, anonymous, persist
 
 **State:** `connected` gates boot-vs-message. `boot`/`msg`/`help` cache synthesized results (re-synth only when text or speed changes). `playText` holds the string the typing subtitle reveals.
 
-**UI:** Norton Commander skin. Top menu (Line/Message/Transmit/Chat/Help — all tappable, work on mobile) is a gray Turbo-Vision menu bar (black text, red hotkeys, cyan selection), three double-framed panels (TERMINAL / MESSAGE / CHATROOM), bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + numbered F-key row. Number keys 1–4 are bound on desktop (ignored while typing in the textarea or chat inputs).
+**UI:** Norton Commander skin. Top menu (Line/Message/Transmit/Feed/Help — all tappable, work on mobile) is a gray Turbo-Vision menu bar (black text, red hotkeys, cyan selection), three double-framed panels (TERMINAL / MESSAGE / FEED), bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + numbered F-key row. Number keys 1–4 are bound on desktop (ignored while typing in the textarea or handle field).
 
-**Chatroom (`index.html` JS + `api/messages.js`):**
-- Frontend: a `C:\CHATROOM` panel — scrollback `#chatlog`, an editable handle field (random retro handle, persisted in `localStorage` as `hs_handle`), a message input (Enter or Send). Polls `GET /api/messages?since=<lastId>` every 4 s and appends only ids it hasn't seen; auto-scrolls only when already at the bottom. All rendered text goes through `escp()` (XSS). On any fetch error it shows `BOARD OFFLINE` and keeps the modem usable.
-- Backend: `api/messages.js`, a Vercel Node serverless function, **no npm deps** — speaks to Vercel KV / Upstash over the Redis REST API via global `fetch`. `GET` returns the last 200 messages; `POST {who,txt}` validates (strip control chars, cap 280/16), rate-limits 5 posts / 10 s per IP, assigns a monotonic `id` via `INCR chat:seq`, `RPUSH`es onto `chat:general`. History is append-only — **never trimmed** (per spec). Env: `KV_REST_API_URL`/`KV_REST_API_TOKEN` or `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`.
+**Feed (`index.html` JS + `api/messages.js`):** the shared board is a feed of modem *transmissions*, not plain text chat.
+- Frontend: a `C:\FEED` panel — a scrollback `#feed` of `.fi` item buttons (each `[HH:MM] HANDLE ► PLAY` + the text) and an editable handle field (random retro handle, persisted in `localStorage` as `hs_handle`). Composing happens in the MESSAGE panel; **`Transmit` (key 1) plays locally AND `postFeed()`s to the board** (transmit = broadcast). Tapping a feed item calls `playFeed()` → `synth('msg', txt, spd)` + `play()`, replaying it as modem audio + spectrogram in the TERMINAL panel (synth results cached per id in `feedCache`). Polls `GET /api/messages?since=<lastId>` every 4 s, appends only unseen ids, auto-scrolls only when already at the bottom. All rendered text goes through `escp()` (XSS). Fetch errors show `BOARD OFFLINE` and keep the modem usable.
+- Backend: `api/messages.js`, a Vercel Node serverless function, **no npm deps** — speaks to Vercel KV / Upstash over the Redis REST API via global `fetch`. Creds are resolved by env-var *suffix* (`*REST_API_URL`/`*REST_API_TOKEN` or `*REDIS_REST_URL`/`*REDIS_REST_TOKEN`) so any integration prefix works. `GET` returns the last 200 messages; `POST {who,txt,spd}` validates (strip control chars, cap 280/16, spd∈{0.5,1}), rate-limits 5 posts / 10 s per IP, assigns a monotonic `id` via `INCR chat:seq`, `RPUSH`es onto `chat:general`. History is append-only — **never trimmed** (per spec).
 
 ## Conventions / gotchas
 
