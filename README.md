@@ -11,9 +11,11 @@ Font: [Web437 IBM VGA 8x16](https://int10h.org/oldschool-pc-fonts/) from The Ult
 The `C:\SECRET` panel walks three levels: **connect → choose → thread.**
 
 - **Connect** — press `1` / tap `► CONNECT` to run the classic handshake (DTMF dial, ring, ANSam answer tone, V.8 chirps, double bong, line probe sweep, equalizer training noise), subtitled stage by stage, ending on `CONNECT 57600`.
-- **Transmit** — once connected you get two fields. Type a secret + `► TRANSMIT`: it's AES-GCM encrypted in the browser and sent, a strong key is **generated**, and you drop into that thread. `COPY` the key and send it to a friend out of band. You can keep transmitting under the same key.
-- **Listen** — or enter a key + `► LISTEN` to tune into that key's thread. `► PLAY ALL` plays each transmission as real modem audio; you read it off the subtitles. Play-only — nothing is printed in full.
-- **Help / Line** (menu) — Help transmits its own reference; Line redials the handshake.
+- **Transmit** — type a secret + `► TRANSMIT`: it's AES-GCM encrypted in the browser and sent, and you drop into that thread. `► SAVE HANDSHAKE` gives you a **handshake** — a short clip of sound (an MP4 you can save to the camera roll and send any way you like). That clip *is* the key; whoever opens it can read the thread. (`COPY CODE` is a hidden text backup if a clip ever fails.)
+- **Listen** — `► OPEN HANDSHAKE`, pick a handshake clip a friend sent you, and it decodes and unlocks their thread (`...or paste a handshake code` is the fallback). `► PLAY ALL` plays each transmission as real modem audio; you read it off the subtitles. Play-only — nothing is printed in full.
+- **Help / Line** (menu) — Help transmits its own reference; Line redials the dial-up handshake.
+
+The **handshake clip** encodes the key as DTMF-style tones (chosen to survive codec re-compression — validated through a WhatsApp video round-trip), generated with MediaRecorder and decoded back with `decodeAudioData` + a Goertzel detector. It's *friction + ritual*, not extra security: anyone holding the clip can decode it, so the real secrecy is still the encryption + the key's entropy.
 
 Each character is encoded through a rotating palette of real modem modulations (Bell 103 FSK, V.21, V.23, V.22-style PSK) with a per-character pitch, then run through a `lineize()` post-process (250–3400 Hz bandpass, saturation, hiss, hum, crackle) so it sounds like copper. Deterministic: the same text always sounds the same.
 
