@@ -38,13 +38,14 @@ The networked half is one zero-dependency serverless function (`api/messages.js`
 
 **UI:** Norton Commander skin. Top menu is **Help only** — Help plays as `kind:'help'` and `frame()` leaves its text on screen afterwards (don't reset the subtitle for `'help'`/`'msg'`). Bottom F-key row = **Transmit / Handshake / Key / Quit** (number keys 1–3 + F10). The `C:\TERMINAL` panel is always shown; the `C:\SECRET` panel (`#secret`) is **hidden until a bottom action is tapped** (`setView('none')` at boot).
 
-`setView(v)` shows exactly one on-demand view (no connect screen — connect is implicit):
+`setView(v)` shows exactly one view; **`setView` forces `'connect'` while `!connected`** so Connect is always the first step:
+- `'connect'` — `#vConnect`: a `► CONNECT` button (`connect()` plays `boot`). On boot completion `frame()` sets `connected` and `setView('none')`.
 - `'none'` — terminal only; the idle line runs.
-- `'compose'` — `#vCompose`: `#msgIn` + `► TRANSMIT` (`doTransmitNew`). Reached via bottom **Transmit** (`showCompose`); the **first** time, it plays the dial-up handshake (`play(boot)`) to "dial in" (sets `connected`), then reveals the field.
-- `'keyentry'` — `#vKey`: `#keyIn` "paste a handshake code" + `► LISTEN` (`doListen`). Reached via bottom **Key** (`showKey`) — the text fallback to the clip.
+- `'compose'` — `#vCompose`: `#msgIn` + `► TRANSMIT` (`doTransmitNew`). Via bottom **Transmit** (`showCompose`).
+- `'keyentry'` — `#vKey`: `#keyIn` "paste a handshake code" + `► LISTEN` (`doListen`). Via bottom **Key** (`showKey`) — the text fallback to the clip.
 - `'thread'` — `#vThread`: `► SAVE HANDSHAKE` (`makeKeyClip`), `COPY CODE` (`doCopy`, recovery hatch, in-panel only), `#replyIn` + `► TRANSMIT` (`doReply`), `► PLAY ALL`/`■ STOP`, and the play-only `#feed`. **No NEW button** — bottom **Quit** (`doQuit`) returns to `'none'`.
 
-Bottom **Handshake** (`openHandshake` → hidden `#clipIn` picker → `openKeyClip`) opens a handshake clip from anywhere. Entering a thread (transmit or listen) sets `connected=true`. A `≤480px` media query hides the top wall-clock and the prompt.
+The bottom actions each `connect()` first if offline (so any tap dials in). Bottom **Handshake** (`openHandshake` → hidden `#clipIn` picker → `openKeyClip`) opens a clip once connected. A `≤480px` media query hides the top wall-clock and the prompt.
 
 The bottom F-keys / number keys are level-aware: `actTransmit()` = connect → reply → transmit-new; `actListen()` = play-all (in a thread) → open a handshake clip. `fCopy` ("Copy code") is disabled outside a thread.
 

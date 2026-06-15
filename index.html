@@ -69,6 +69,10 @@
   .fi .ct{color:var(--dim);} .fi .pl{color:var(--mcyan); margin-left:6px;}
 
   .lvl[hidden], [hidden]{display:none;}
+  .big{display:block; width:100%; background:var(--mcyan); color:#000; border:none;
+    font:inherit; font-size:16px; padding:10px; cursor:pointer;}
+  .big:hover, .big:focus-visible{background:var(--cyan); outline:none;}
+  .hint{color:var(--dim); text-align:center; margin-top:6px;}
 
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
@@ -109,10 +113,14 @@
     <canvas id="spec"></canvas>
     <div class="khz">0-4 kHz</div>
   </div>
-  <div class="subs" id="subs"><span class="who">LINE:</span>on the line - tap TRANSMIT, HANDSHAKE, or KEY.</div>
+  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE - tap CONNECT to dial in.</div>
 </fieldset>
 
-<fieldset id="secret" hidden><legend>C:\SECRET</legend>
+<fieldset id="secret"><legend>C:\SECRET</legend>
+  <div class="lvl" id="vConnect">
+    <button class="big" id="connectBtn" type="button">► CONNECT</button>
+    <div class="hint">dial in to begin</div>
+  </div>
   <div class="lvl" id="vCompose" hidden>
     <div class="row krow">
       <input id="msgIn" class="kin" maxlength="500" placeholder="type your secret" aria-label="message to transmit">
@@ -398,8 +406,8 @@ function frame(){
     curSrc = null;
     document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
     if(queue.length){ playFromQueue(); return; }   // continue a PLAY ALL run
-    if(view !== 'thread') startIdle();              // resume the idle line off-thread
-    if(playKind==='boot' && view==='compose') msgIn.focus();
+    if(playKind==='boot') setView('none');          // dialed in -> online, terminal-only
+    else if(view !== 'thread') startIdle();         // resume the idle line off-thread
     // help text and message subtitles are left on screen (Help stays readable)
   }
 }
@@ -567,6 +575,7 @@ async function openKeyClip(file){
 /* ---------- controls: terminal + on-demand views (compose / key / thread) ---------- */
 const txBtn = document.getElementById('bTx'),
       secretEl = document.getElementById('secret'),
+      vConnect = document.getElementById('vConnect'),
       vCompose = document.getElementById('vCompose'),
       vKey = document.getElementById('vKey'),
       vThread = document.getElementById('vThread'),
@@ -585,12 +594,13 @@ const feedMsgs = [];    // the current key's transmissions, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
 function setView(v){
-  view = v;
-  secretEl.hidden = v==='none';
-  vCompose.hidden = v!=='compose';
-  vKey.hidden     = v!=='keyentry';
-  vThread.hidden  = v!=='thread';
-  if(v==='thread') stopIdle(); else startIdle();   // terminal is "alive" off-thread
+  view = connected ? v : 'connect';     // CONNECT is the gate - the first step
+  secretEl.hidden = view==='none';
+  vConnect.hidden = view!=='connect';
+  vCompose.hidden = view!=='compose';
+  vKey.hidden     = view!=='keyentry';
+  vThread.hidden  = view!=='thread';
+  if(view==='thread') stopIdle(); else startIdle();   // terminal is "alive" off-thread
 }
 
 /* ---------- idle line: synthetic carrier + line noise at the menu.
@@ -729,25 +739,30 @@ async function loadThread(key){     // -> thread view
   pollThread();
 }
 
-/* bottom-menu actions: each reveals its field on demand (terminal-only until tapped) */
-async function showCompose(){       // TRANSMIT
+async function connect(){           // the first step: dial in
+  if(playing || connected) return;
   await ensureAudio();
-  setView('compose');
-  if(!connected){ if(!boot) boot = synth('boot','',1); play(boot, 'boot'); return; }  // dial in once
-  msgIn.focus();
+  if(!boot) boot = synth('boot','',1);
+  play(boot, 'boot');
+}
+/* bottom-menu actions: connect must come first; then each reveals its field on demand */
+async function showCompose(){       // TRANSMIT
+  if(!connected){ connect(); return; }
+  await ensureAudio();
+  setView('compose'); msgIn.focus();
 }
 async function showKey(){           // KEY (paste a handshake code)
+  if(!connected){ connect(); return; }
   await ensureAudio();
-  setView('keyentry');
-  keyIn.focus();
+  setView('keyentry'); keyIn.focus();
 }
-function openHandshake(){ clipIn.click(); }   // HANDSHAKE - audio is resumed in openKeyClip
+function openHandshake(){ if(!connected){ connect(); return; } clipIn.click(); }   // HANDSHAKE
 function doQuit(){                  // back to the clean terminal-only main screen
   stopPlayback();
   activeKey = ''; activeChannel = null; feedMsgs.length = 0; lastId = 0;
   msgIn.value = ''; keyIn.value = ''; replyIn.value = '';
   const a = document.activeElement; if(a && a.blur) a.blur();   // drop the keyboard
-  setView('none'); menuLine();
+  setView('none'); if(connected) menuLine();
 }
 async function sendUnder(key, text){
   play(synth('msg', text, 1), 'msg');   // hear your own plaintext
@@ -800,6 +815,8 @@ stopBtn.addEventListener('click', stopPlayback);
 msgIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doTransmitNew(); } });
 replyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doReply(); } });
 keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doListen(); } });
+
+connectBtn.addEventListener('click', connect);
 
 /* bottom menu: Transmit / Handshake / Key / Quit (reveal fields on demand) */
 function actTransmit(){ if(view==='thread') doReply(); else showCompose(); }
