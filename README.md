@@ -8,12 +8,12 @@ Font: [Web437 IBM VGA 8x16](https://int10h.org/oldschool-pc-fonts/) from The Ult
 
 ## What it does
 
-The `C:\SECRET` panel walks three levels: **connect → choose → thread.**
+The main screen is just the `C:\TERMINAL` — a live spectrogram on an idle line. The bottom bar is **Transmit / Handshake / Key / Quit**; each reveals its field on demand.
 
-- **Connect** — press `1` / tap `► CONNECT` to run the classic handshake (DTMF dial, ring, ANSam answer tone, V.8 chirps, double bong, line probe sweep, equalizer training noise), subtitled stage by stage, ending on `CONNECT 57600`.
-- **Transmit** — type a secret + `► TRANSMIT`: it's AES-GCM encrypted in the browser and sent, and you drop into that thread. `► SAVE HANDSHAKE` gives you a **handshake** — a short clip of sound (an MP4 you can save to the camera roll and send any way you like). That clip *is* the key; whoever opens it can read the thread. (`COPY CODE` is a hidden text backup if a clip ever fails.)
-- **Listen** — `► OPEN HANDSHAKE`, pick a handshake clip a friend sent you, and it decodes and unlocks their thread (`...or paste a handshake code` is the fallback). `► PLAY ALL` plays each transmission as real modem audio; you read it off the subtitles. Play-only — nothing is printed in full.
-- **Help / Line** (menu) — Help transmits its own reference; Line redials the dial-up handshake.
+- **Transmit** — type a secret + `► TRANSMIT`: it's AES-GCM encrypted in the browser and sent, and you drop into that thread (the first transmit "dials in" with the classic dial-up handshake). `► SAVE HANDSHAKE` gives you a **handshake** — a short clip of sound (an MP4 you can save to the camera roll and send any way you like). That clip *is* the key; whoever opens it can read the thread. (`COPY CODE` is a hidden text backup if a clip ever fails.)
+- **Handshake** — pick a handshake clip a friend sent you; it decodes and unlocks their thread, replaying as the *"you're in"* ritual. (**Key** is the text fallback — paste a handshake code.)
+- **Listen in a thread** — `► PLAY ALL` plays each transmission as real modem audio; you read it off the subtitles. Play-only — nothing is printed in full.
+- **Quit** returns to the clean terminal. **Help** (top menu) transmits its own reference and leaves the text on screen to read.
 
 The **handshake clip** encodes the key as DTMF-style tones (chosen to survive codec re-compression — validated through a WhatsApp video round-trip), generated with MediaRecorder and decoded back with `decodeAudioData` + a Goertzel detector. It's *friction + ritual*, not extra security: anyone holding the clip can decode it, so the real secrecy is still the encryption + the key's entropy.
 
