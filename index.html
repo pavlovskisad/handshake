@@ -160,8 +160,7 @@
   <div class="fkeys">
     <button class="fk" id="tx"><b>1</b>Connect</button>
     <button class="fk" id="fListen"><b>2</b>Listen</button>
-    <button class="fk" id="fNew"><b>3</b>New key</button>
-    <button class="fk" id="fCopy"><b>4</b>Copy key</button>
+    <button class="fk" id="fCopy"><b>3</b>Copy key</button>
     <button class="fk" id="fkq"><b>10</b>Quit</button>
   </div>
 </div>
@@ -335,7 +334,6 @@ function synth(mode, text, spd, label){
       add(silence(0.025/spd));
     }
     add(silence(0.2));
-    sub('LINE','TX complete - '+[...text].length+' chars OK.');
     add(silence(0.6));
   }
   const out = new Float32Array(Math.round(t*SR)+1);
@@ -488,11 +486,8 @@ const txBtn = document.getElementById('tx'),
       feedEl = document.getElementById('feed'),
       playAllBtn = document.getElementById('playAll'),
       stopBtn = document.getElementById('stopAll');
-function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
-function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function sys(t){ subs.innerHTML = '<span class="who">SYS:</span>'+escp(t); }
 
-keyIn.value = (lsGet('hs_key') || '').trim();   // prefill last key for a quick re-listen
 let activeKey = '', activeChannel = null, lastId = 0;
 const feedCache = {};   // id -> synthesized result for replay
 const feedMsgs = [];    // the current key's transmissions, in order
@@ -570,7 +565,6 @@ async function loadThread(key){     // -> level 3
   activeKey = (key||'').trim();
   feedMsgs.length = 0; lastId = 0;
   if(!activeKey){ activeChannel = null; setLevel(); return; }
-  lsSet('hs_key', activeKey);
   keyShowEl.textContent = activeKey;
   feedEl.innerHTML = '<div class="csys">tuning in...</div>';
   setLevel();
@@ -651,7 +645,6 @@ function actTransmit(){ if(!connected) connect(); else if(activeKey) doReply(); 
 function actListen(){ if(activeKey) playAllBtn.click(); else if(connected) doListen(); }
 txBtn.addEventListener('click', actTransmit);
 document.getElementById('fListen').addEventListener('click', actListen);
-document.getElementById('fNew').addEventListener('click', ()=>{ if(activeKey) doNew(); });
 document.getElementById('fCopy').addEventListener('click', ()=>{ if(activeKey) doCopy(); });
 
 /* menu */
@@ -672,17 +665,15 @@ addEventListener('keydown', e=>{
   const k = e.key;
   if(k==='F1'||k==='1'){ e.preventDefault(); actTransmit(); }
   if(k==='F2'||k==='2'){ e.preventDefault(); actListen(); }
-  if(k==='F3'||k==='3'){ e.preventDefault(); if(activeKey) doNew(); }
-  if(k==='F4'||k==='4'){ e.preventDefault(); if(activeKey) doCopy(); }
+  if(k==='F3'||k==='3'){ e.preventDefault(); if(activeKey) doCopy(); }
+  if(k==='F10'){ e.preventDefault(); doNew(); }
 });
 
 setLevel();
 setInterval(()=>{ if(activeChannel && !playing) pollThread(); }, 4000);
 
-/* quit easter egg + clocks */
-document.getElementById('fkq').addEventListener('click', ()=>{
-  subs.innerHTML = '<span class="who">SYS:</span>nice try. it is 1998 forever.';
-});
+/* quit -> back to the main menu (level 2) */
+document.getElementById('fkq').addEventListener('click', doNew);
 function tickClock(){
   const d = new Date();
   document.getElementById('tclk').textContent =
