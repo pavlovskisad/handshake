@@ -73,9 +73,6 @@
     font:inherit; font-size:16px; padding:10px; cursor:pointer;}
   .big:hover, .big:focus-visible{background:var(--cyan); outline:none;}
   .hint{color:var(--dim); text-align:center; margin-top:6px;}
-  .klabel{color:var(--yel);}
-  .keyshow{flex:1; min-width:0; color:var(--cyan); background:#001877;
-    padding:5px 6px; overflow:auto; white-space:nowrap; user-select:all;}
 
   .bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%);
     width:100%; max-width:680px; background:var(--blue); padding:0 4px;}
@@ -131,16 +128,20 @@
       <input id="msgIn" class="kin" maxlength="500" placeholder="type your msg" aria-label="message to transmit">
       <button class="fbtn" id="txBtn2" type="button">► TRANSMIT</button>
     </div>
-    <div class="row krow">
-      <input id="keyIn" class="kin" maxlength="80" placeholder="enter key" aria-label="key to listen">
-      <button class="fbtn" id="listenBtn" type="button">► LISTEN</button>
+    <div class="row frow">
+      <button class="fbtn" id="openClip" type="button">► OPEN HANDSHAKE</button>
     </div>
+    <div class="row krow">
+      <input id="keyIn" class="kin" maxlength="80" placeholder="...or paste a handshake code" aria-label="handshake code to listen">
+      <button class="fbtn" id="listenBtn" type="button">LISTEN</button>
+    </div>
+    <input id="clipIn" type="file" accept="video/*,audio/*" hidden>
   </div>
   <!-- level 3: transmission thread -->
   <div class="lvl" id="lvlThread" hidden>
-    <div class="row krow">
-      <span class="klabel">KEY:</span><code class="keyshow" id="keyShow"></code>
-      <button class="fbtn" id="copyKey" type="button">COPY</button>
+    <div class="row frow">
+      <button class="fbtn" id="saveKey" type="button">► SAVE HANDSHAKE</button>
+      <button class="fbtn" id="copyKey" type="button">COPY CODE</button>
       <button class="fbtn" id="newKey" type="button">NEW</button>
     </div>
     <div class="row krow">
@@ -164,7 +165,7 @@
   <div class="fkeys">
     <button class="fk" id="tx"><b>1</b>Connect</button>
     <button class="fk" id="fListen"><b>2</b>Listen</button>
-    <button class="fk" id="fCopy"><b>3</b>Copy key</button>
+    <button class="fk" id="fCopy"><b>3</b>Copy code</button>
     <button class="fk" id="fkq"><b>10</b>Quit</button>
   </div>
 </div>
@@ -477,6 +478,104 @@ function genKey(){
   return s;   // e.g. K7F2-9XQ4-3MTL-8RVN  (~80 bits)
 }
 
+/* ---------- key-as-clip: encode the key into DTMF-style tones (codec-survivable),
+   wrap as a shareable MP4, and decode it back from any uploaded clip. Validated to
+   survive a WhatsApp video round-trip. ---------- */
+const KB32 = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const DROW = [697,770,852,941], DCOL = [1209,1336,1477,1633], DFREQ = [...DROW,...DCOL];
+const KHDR = [15,14], KON = 0.10, KGAP = 0.06, KLEAD = 0.20;
+function keyNibbles(key){
+  const clean = key.toUpperCase().replace(/[^A-Z2-9]/g,''), bits = [];
+  for(const ch of clean){ const v = KB32.indexOf(ch); if(v<0) continue; for(let b=4;b>=0;b--) bits.push((v>>b)&1); }
+  while(bits.length % 4) bits.push(0);
+  const n = []; for(let i=0;i<bits.length;i+=4) n.push((bits[i]<<3)|(bits[i+1]<<2)|(bits[i+2]<<1)|bits[i+3]);
+  return n;
+}
+function nibblesKey(n){
+  const bits = []; for(const v of n){ for(let b=3;b>=0;b--) bits.push((v>>b)&1); }
+  let s=''; for(let i=0;i+5<=bits.length;i+=5){ let v=0; for(let j=0;j<5;j++) v=(v<<1)|bits[i+j]; s += KB32[v]; }
+  return s.replace(/(.{4})/g,'$1-').replace(/-$/,'');
+}
+function nibBytes(n){ const b=[]; for(let i=0;i<n.length;i+=2) b.push((n[i]<<4)|(n[i+1]||0)); return b; }
+function crc8(by){ let c=0; for(const b of by){ c^=b; for(let i=0;i<8;i++) c=(c&0x80)?((c<<1)^0x07)&0xff:(c<<1)&0xff; } return c; }
+function keyFrame(key){ const p=keyNibbles(key), c=crc8(nibBytes(p)); return [...KHDR,...p,(c>>4)&15,c&15]; }
+function keyToneBuf(key){   // Float32 of clean DTMF tones (no lineize - keep it decodable)
+  const parts=[silence(KLEAD)];
+  for(const idx of keyFrame(key)){ parts.push(tone(KON, [DROW[(idx>>2)&3], DCOL[idx&3]], 0.5)); parts.push(silence(KGAP)); }
+  parts.push(silence(0.2));
+  let len=0; for(const p of parts) len+=p.length;
+  const o=new Float32Array(len); let off=0; for(const p of parts){ o.set(p,off); off+=p.length; }
+  return o;
+}
+function goertzel(x,start,N,f,sr){ const k=Math.round(N*f/sr), w=2*Math.PI*k/N, cw=2*Math.cos(w); let s1=0,s2=0;
+  for(let i=0;i<N;i++){ const s0=x[start+i]+cw*s1-s2; s2=s1; s1=s0; } return s1*s1+s2*s2-cw*s1*s2; }
+function top2(a){ let i1=0; for(let i=1;i<a.length;i++) if(a[i]>a[i1]) i1=i; let i2=-1;
+  for(let i=0;i<a.length;i++){ if(i===i1) continue; if(i2<0||a[i]>a[i2]) i2=i; } return [i1,i2]; }
+function decodeKey(x,sr){
+  const N=1024, HOP=512, MINRUN=3, PEAK=3.0, FLOOR=0.10;
+  const wins=[]; let maxTot=1e-9;
+  for(let s=0;s+N<=x.length;s+=HOP){ const p=DFREQ.map(f=>goertzel(x,s,N,f,sr)); const t=p.reduce((a,b)=>a+b,0); if(t>maxTot) maxTot=t; wins.push({p,t}); }
+  const floor=FLOOR*maxTot, seq=[];
+  for(const {p,t} of wins){ if(t<floor){ seq.push(-1); continue; } const rp=p.slice(0,4), cp=p.slice(4,8);
+    const [r1,r2]=top2(rp), [c1,c2]=top2(cp); seq.push((rp[r1]>PEAK*rp[r2]&&cp[c1]>PEAK*cp[c2])?(r1*4+c1):-1); }
+  const syms=[]; let i=0;
+  while(i<seq.length){ if(seq[i]<0){ i++; continue; } let j=i; const idx=seq[i]; while(j<seq.length&&seq[j]===idx) j++; if(j-i>=MINRUN) syms.push(idx); i=j; }
+  for(let k=0;k+24<=syms.length;k++){ if(syms[k]===KHDR[0]&&syms[k+1]===KHDR[1]){
+    const pay=syms.slice(k+2,k+22), crc=syms.slice(k+22,k+24), c=crc8(nibBytes(pay));
+    if(crc[0]===((c>>4)&15) && crc[1]===(c&15)) return nibblesKey(pay); } }
+  return null;
+}
+function pickMime(){
+  if(!window.MediaRecorder) return null;
+  for(const m of ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus','video/webm'])
+    if(MediaRecorder.isTypeSupported(m)) return m;
+  return null;
+}
+async function shareBlob(blob, name){
+  const file = new File([blob], name, {type:blob.type});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'handshake key'}); return; }catch(e){}
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function makeKeyClip(key){
+  if(playing) return;
+  await ensureAudio();
+  const mime = pickMime();
+  if(!mime){ sys('this browser cannot make a handshake clip - use COPY CODE instead.'); return; }
+  const f32 = keyToneBuf(key);
+  const buf = actx.createBuffer(1, f32.length, SR); buf.copyToChannel(f32,0);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const dest = actx.createMediaStreamDestination();
+  const an = actx.createAnalyser(); an.fftSize = 2048; const fb = new Uint8Array(an.frequencyBinCount);
+  src.connect(an); src.connect(dest); src.connect(actx.destination);
+  cx.fillStyle = '#0000aa'; cx.fillRect(0,0,cv.width,cv.height);
+  const stream = new MediaStream([cv.captureStream(30).getVideoTracks()[0], dest.stream.getAudioTracks()[0]]);
+  const rec = new MediaRecorder(stream, {mimeType:mime}); const parts=[];
+  rec.ondataavailable = e=>{ if(e.data.size) parts.push(e.data); };
+  rec.onstop = ()=>{ const mp4 = mime.includes('mp4'); shareBlob(new Blob(parts,{type:mp4?'video/mp4':'video/webm'}), 'handshake.'+(mp4?'mp4':'webm'));
+    sys('handshake ready - save it / send it to your friend.'); };
+  let raf; const draw=()=>{ an.getByteFrequencyData(fb); const colW=Math.max(2,(devicePixelRatio||1)*2), H=cv.height;
+    cx.drawImage(cv,-colW,0); const bins=Math.round(4000/(SR/an.fftSize));
+    for(let y=0;y<H;y++){ cx.fillStyle=heat(fb[((1-y/H)*bins)|0]||0); cx.fillRect(cv.width-colW,y,colW,1);} raf=requestAnimationFrame(draw); };
+  sys('rendering handshake...');
+  rec.start(); src.start(); draw();
+  src.onended = ()=>{ cancelAnimationFrame(raf); setTimeout(()=>rec.stop(), 120); };
+}
+async function openKeyClip(file){
+  if(!file || playing) return;
+  await ensureAudio();
+  sys('reading handshake...');
+  let buffer=null;
+  try{ buffer = await actx.decodeAudioData(await file.arrayBuffer()); }catch(e){ buffer=null; }
+  const key = buffer ? decodeKey(buffer.getChannelData(0), buffer.sampleRate) : null;
+  if(!key){ sys('NO CARRIER - no handshake in that clip. try the original file, or paste the code.'); return; }
+  await loadThread(key);                       // -> level 3
+  const o = { f32: buffer.getChannelData(0), buf: buffer, dur: buffer.duration, text: '',
+    events: [{t:0,who:'LINE',txt:'handshake accepted - connecting...'}, {t:Math.max(0,buffer.duration-0.6),who:'LINE',txt:'you are in.'}], charTimes: [] };
+  play(o, 'msg');                              // replay the handshake as the "you're in" ritual
+}
+
 /* ---------- controls: three levels (connect / choose / thread) ---------- */
 const txBtn = document.getElementById('tx'),
       connectBtn = document.getElementById('connectBtn'),
@@ -486,8 +585,9 @@ const txBtn = document.getElementById('tx'),
       msgIn = document.getElementById('msgIn'),
       keyIn = document.getElementById('keyIn'),
       replyIn = document.getElementById('replyIn'),
-      keyShowEl = document.getElementById('keyShow'),
       feedEl = document.getElementById('feed'),
+      clipIn = document.getElementById('clipIn'),
+      fCopyBtn = document.getElementById('fCopy'),
       playAllBtn = document.getElementById('playAll'),
       stopBtn = document.getElementById('stopAll');
 function sys(t){ subs.innerHTML = '<span class="who">SYS:</span>'+escp(t); }
@@ -502,13 +602,14 @@ function setLevel(){
   lvlConnect.hidden = l!==1;
   lvlMenu.hidden = l!==2;
   lvlThread.hidden = l!==3;
-  if(l===2) startIdle(); else stopIdle();   // terminal is "alive" only at the menu
+  fCopyBtn.disabled = !activeKey;             // Copy key only works inside a thread
+  if(l===2) startIdle(); else stopIdle();     // terminal is "alive" only at the menu
 }
 
 /* ---------- idle line: synthetic carrier + line noise at the menu.
    Purely decorative - no real channel, never leaks or pulls old messages. ---------- */
 let idleOn=false, idleRAF=0, idleSrc=null, idleGain=null, idleBuf=null, idleT=0;
-function menuLine(){ subs.innerHTML = '<span class="who">LINE:</span>on the line - type a msg + TRANSMIT, or a key + LISTEN.'; }
+function menuLine(){ subs.innerHTML = '<span class="who">LINE:</span>on the line - TRANSMIT a secret, or OPEN a handshake to listen.'; }
 function idleColumn(){
   const H = cv.height, colW = Math.max(2,(devicePixelRatio||1)*2);
   cx.drawImage(cv, -colW, 0);
@@ -631,7 +732,6 @@ async function loadThread(key){     // -> level 3
   activeKey = (key||'').trim();
   feedMsgs.length = 0; lastId = 0;
   if(!activeKey){ activeChannel = null; setLevel(); return; }
-  keyShowEl.textContent = activeKey;
   feedEl.innerHTML = '<div class="csys">tuning in...</div>';
   setLevel();
   activeChannel = await channelId(activeKey);
@@ -661,7 +761,7 @@ async function doTransmitNew(){      // level 2: type a msg -> new keyed thread
   await loadThread(key);
   msgIn.value = '';
   sendUnder(key, text);
-  sys('new KEY '+key+' - COPY it and send to your friend.');
+  sys('handshake minted - SAVE HANDSHAKE to share it (or COPY CODE).');
 }
 async function doListen(){           // level 2: enter a key -> tune in
   if(playing) return;
@@ -685,20 +785,19 @@ function doNew(){                    // back to the clean main menu (level 2)
   const a = document.activeElement; if(a && a.blur) a.blur();   // drop the keyboard
   setLevel();                                                   // -> idle menu, clean subtitle
 }
-async function doCopy(){
+async function doCopy(){               // recovery hatch: the handshake code in text, never shown otherwise
   if(!activeKey) return;
-  try{ await navigator.clipboard.writeText(activeKey); sys('KEY copied - share it out of band.'); }
-  catch(e){
-    const r = document.createRange(); r.selectNodeContents(keyShowEl);
-    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    sys('select + copy the KEY.');
-  }
+  try{ await navigator.clipboard.writeText(activeKey); sys('handshake code copied - a text backup if the clip fails.'); }
+  catch(e){ sys('CODE: '+activeKey); }
 }
 
 connectBtn.addEventListener('click', connect);
 document.getElementById('txBtn2').addEventListener('click', doTransmitNew);
 document.getElementById('txBtn3').addEventListener('click', doReply);
 document.getElementById('listenBtn').addEventListener('click', doListen);
+document.getElementById('openClip').addEventListener('click', ()=>clipIn.click());
+clipIn.addEventListener('change', e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openKeyClip(f); });
+document.getElementById('saveKey').addEventListener('click', ()=>{ if(activeKey) makeKeyClip(activeKey); });
 document.getElementById('copyKey').addEventListener('click', doCopy);
 document.getElementById('newKey').addEventListener('click', doNew);
 playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
@@ -709,7 +808,7 @@ keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); 
 
 /* bottom F-key bar + number keys, level-aware */
 function actTransmit(){ if(!connected) connect(); else if(activeKey) doReply(); else doTransmitNew(); }
-function actListen(){ if(activeKey) playAllBtn.click(); else if(connected) doListen(); }
+function actListen(){ if(activeKey) playAllBtn.click(); else if(connected) clipIn.click(); }
 txBtn.addEventListener('click', actTransmit);
 document.getElementById('fListen').addEventListener('click', actListen);
 document.getElementById('fCopy').addEventListener('click', ()=>{ if(activeKey) doCopy(); });
@@ -720,10 +819,10 @@ document.getElementById('mLine').addEventListener('click', async ()=>{
   if(!boot) boot = synth('boot','',1); play(boot, 'boot');
 });
 document.getElementById('mTx').addEventListener('click', ()=>{ (activeKey?replyIn:msgIn).focus(); });
-document.getElementById('mListen').addEventListener('click', ()=>{ if(activeKey) playAllBtn.click(); else keyIn.focus(); });
+document.getElementById('mListen').addEventListener('click', ()=>{ if(activeKey) playAllBtn.click(); else clipIn.click(); });
 document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return; await ensureAudio();
-  if(!help) help = synth('msg', 'type a secret, transmit. you get a KEY - copy it and send to a friend out of band. they enter the key and listen. only key holders can hear it. no key, no message.', 1, 'HELP');
+  if(!help) help = synth('msg', 'type a secret and transmit. you get a HANDSHAKE - a little clip of sound. save it and send it to a friend any way you like. they open the handshake here and the transmission unlocks. only someone with the handshake can hear it. play it to read it off the screen. no handshake, no message.', 1, 'HELP');
   play(help, 'msg');
 });
 
