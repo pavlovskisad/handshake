@@ -2,7 +2,9 @@
 
 Send a short secret as a dial-up modem transmission. You type a message, it's encrypted in your browser and goes out over a synthesized modem; a strong **key** is generated for you to share. Anyone you give the key to can tune in, listen, and read it off the subtitles. No key, no message.
 
-Norton Commander TUI skin, live spectrogram. The frontend is one `index.html`; one zero-dependency serverless function (`api/messages.js`) relays the encrypted transmissions.
+Norton Commander TUI skin in a true CP437 font, live spectrogram. The frontend is `index.html` plus one bundled webfont; one zero-dependency serverless function (`api/messages.js`) relays the encrypted transmissions.
+
+Font: [Web437 IBM VGA 8x16](https://int10h.org/oldschool-pc-fonts/) from The Ultimate Oldschool PC Font Pack by VileR, CC BY-SA 4.0.
 
 ## What it does
 
