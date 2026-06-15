@@ -68,7 +68,7 @@
   .fi.playing{background:#001a9c;}
   .fi .ct{color:var(--dim);} .fi .pl{color:var(--mcyan); margin-left:6px;}
 
-  .lvl[hidden]{display:none;}
+  .lvl[hidden], [hidden]{display:none;}
   .big{display:block; width:100%; background:var(--mcyan); color:#000; border:none;
     font:inherit; font-size:16px; padding:10px; cursor:pointer;}
   .big:hover, .big:focus-visible{background:var(--cyan); outline:none;}
@@ -104,7 +104,7 @@
 </head>
 <body>
 <div class="menu">
-  <span id="mLine"><b>L</b>ine</span><span id="mTx"><b>T</b>ransmit</span><span id="mListen"><b>L</b>isten</span><span id="mHelp"><b>H</b>elp</span>
+  <span id="mHelp"><b>H</b>elp</span>
   <span class="grow"></span><span class="tclk" id="tclk">00:00</span>
 </div>
 
@@ -113,39 +113,33 @@
     <canvas id="spec"></canvas>
     <div class="khz">0-4 kHz</div>
   </div>
-  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE - press 1 Connect.</div>
+  <div class="subs" id="subs"><span class="who">LINE:</span>OFFLINE - tap CONNECT to dial in.</div>
 </fieldset>
 
-<fieldset><legend>C:\SECRET</legend>
-  <!-- level 1: connect -->
-  <div class="lvl" id="lvlConnect">
+<fieldset id="secret"><legend>C:\SECRET</legend>
+  <div class="lvl" id="vConnect">
     <button class="big" id="connectBtn" type="button">► CONNECT</button>
-    <div class="hint">press 1 or tap to dial in</div>
+    <div class="hint">dial in to begin</div>
   </div>
-  <!-- level 2: transmit or listen -->
-  <div class="lvl" id="lvlMenu" hidden>
+  <div class="lvl" id="vCompose" hidden>
     <div class="row krow">
-      <input id="msgIn" class="kin" maxlength="500" placeholder="type your msg" aria-label="message to transmit">
+      <input id="msgIn" class="kin" maxlength="500" placeholder="type your secret" aria-label="message to transmit">
       <button class="fbtn" id="txBtn2" type="button">► TRANSMIT</button>
     </div>
-    <div class="row frow">
-      <button class="fbtn" id="openClip" type="button">► OPEN HANDSHAKE</button>
-    </div>
-    <div class="row krow">
-      <input id="keyIn" class="kin" maxlength="80" placeholder="...or paste a handshake code" aria-label="handshake code to listen">
-      <button class="fbtn" id="listenBtn" type="button">LISTEN</button>
-    </div>
-    <input id="clipIn" type="file" accept="video/*,audio/*" hidden>
   </div>
-  <!-- level 3: transmission thread -->
-  <div class="lvl" id="lvlThread" hidden>
+  <div class="lvl" id="vKey" hidden>
+    <div class="row krow">
+      <input id="keyIn" class="kin" maxlength="80" placeholder="paste a handshake code" aria-label="handshake code">
+      <button class="fbtn" id="listenBtn" type="button">► LISTEN</button>
+    </div>
+  </div>
+  <div class="lvl" id="vThread" hidden>
     <div class="row frow">
       <button class="fbtn" id="saveKey" type="button">► SAVE HANDSHAKE</button>
       <button class="fbtn" id="copyKey" type="button">COPY CODE</button>
-      <button class="fbtn" id="newKey" type="button">NEW</button>
     </div>
     <div class="row krow">
-      <input id="replyIn" class="kin" maxlength="500" placeholder="type your msg" aria-label="reply">
+      <input id="replyIn" class="kin" maxlength="500" placeholder="type your secret" aria-label="reply">
       <button class="fbtn" id="txBtn3" type="button">► TRANSMIT</button>
     </div>
     <div class="row frow">
@@ -154,6 +148,7 @@
     </div>
     <div class="feed" id="feed"></div>
   </div>
+  <input id="clipIn" type="file" accept="video/*,audio/*" hidden>
 </fieldset>
 
 <div class="bottom">
@@ -163,10 +158,10 @@
     <span class="sep">│</span><span id="lnk">OFFLINE</span>&nbsp;<span id="clk">00:00</span>
   </div>
   <div class="fkeys">
-    <button class="fk" id="tx"><b>1</b>Connect</button>
-    <button class="fk" id="fListen"><b>2</b>Listen</button>
-    <button class="fk" id="fCopy"><b>3</b>Copy code</button>
-    <button class="fk" id="fkq"><b>10</b>Quit</button>
+    <button class="fk" id="bTx"><b>1</b>Transmit</button>
+    <button class="fk" id="bHand"><b>2</b>Handshake</button>
+    <button class="fk" id="bKey"><b>3</b>Key</button>
+    <button class="fk" id="bQuit"><b>10</b>Quit</button>
   </div>
 </div>
 
@@ -405,14 +400,15 @@ function frame(){
       connected = true;
       connectedAt = Date.now();
       document.getElementById('lnk').textContent = 'ONLINE';
-      txBtn.innerHTML = '<b>1</b>Transmit';
     }
     setLed('OH', connected); setLed('CD', connected);
     txBtn.disabled = false;
     curSrc = null;
     document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
-    if(queue.length) playFromQueue();   // continue a PLAY ALL run
-    else setLevel();                    // settle the level; resume idle at the menu
+    if(queue.length){ playFromQueue(); return; }   // continue a PLAY ALL run
+    if(playKind==='boot') setView('none');          // dialed in -> online, terminal-only
+    else if(view !== 'thread') startIdle();         // resume the idle line off-thread
+    // help text and message subtitles are left on screen (Help stays readable)
   }
 }
 
@@ -576,34 +572,35 @@ async function openKeyClip(file){
   play(o, 'msg');                              // replay the handshake as the "you're in" ritual
 }
 
-/* ---------- controls: three levels (connect / choose / thread) ---------- */
-const txBtn = document.getElementById('tx'),
-      connectBtn = document.getElementById('connectBtn'),
-      lvlConnect = document.getElementById('lvlConnect'),
-      lvlMenu = document.getElementById('lvlMenu'),
-      lvlThread = document.getElementById('lvlThread'),
+/* ---------- controls: terminal + on-demand views (compose / key / thread) ---------- */
+const txBtn = document.getElementById('bTx'),
+      secretEl = document.getElementById('secret'),
+      vConnect = document.getElementById('vConnect'),
+      vCompose = document.getElementById('vCompose'),
+      vKey = document.getElementById('vKey'),
+      vThread = document.getElementById('vThread'),
       msgIn = document.getElementById('msgIn'),
       keyIn = document.getElementById('keyIn'),
       replyIn = document.getElementById('replyIn'),
       feedEl = document.getElementById('feed'),
       clipIn = document.getElementById('clipIn'),
-      fCopyBtn = document.getElementById('fCopy'),
       playAllBtn = document.getElementById('playAll'),
       stopBtn = document.getElementById('stopAll');
 function sys(t){ subs.innerHTML = '<span class="who">SYS:</span>'+escp(t); }
 
-let activeKey = '', activeChannel = null, lastId = 0;
+let activeKey = '', activeChannel = null, lastId = 0, view = 'none';
 const feedCache = {};   // id -> synthesized result for replay
 const feedMsgs = [];    // the current key's transmissions, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
-function setLevel(){
-  const l = !connected ? 1 : (activeKey ? 3 : 2);
-  lvlConnect.hidden = l!==1;
-  lvlMenu.hidden = l!==2;
-  lvlThread.hidden = l!==3;
-  fCopyBtn.disabled = !activeKey;             // Copy key only works inside a thread
-  if(l===2) startIdle(); else stopIdle();     // terminal is "alive" only at the menu
+function setView(v){
+  view = connected ? v : 'connect';     // CONNECT is the gate - the first step
+  secretEl.hidden = view==='none';
+  vConnect.hidden = view!=='connect';
+  vCompose.hidden = view!=='compose';
+  vKey.hidden     = view!=='keyentry';
+  vThread.hidden  = view!=='thread';
+  if(view==='thread') stopIdle(); else startIdle();   // terminal is "alive" off-thread
 }
 
 /* ---------- idle line: synthetic carrier + line noise at the menu.
@@ -642,18 +639,19 @@ function makeIdleBuffer(){
   lineize(a);
   const buf = actx.createBuffer(1, n, SR); buf.copyToChannel(a, 0); return buf;
 }
+function idleSound(){   // start the ambient loop once audio is available
+  if(!actx || idleSrc || !idleOn) return;
+  if(!idleBuf) idleBuf = makeIdleBuffer();
+  idleGain = actx.createGain(); idleGain.gain.value = 0;
+  idleSrc = actx.createBufferSource(); idleSrc.buffer = idleBuf; idleSrc.loop = true;
+  idleSrc.connect(idleGain); idleGain.connect(actx.destination);
+  idleSrc.start();
+  idleGain.gain.linearRampToValueAtTime(0.05, actx.currentTime + 0.8);
+}
 function startIdle(){
   if(idleOn) return; idleOn = true;
-  menuLine();
   if(!idleRAF) idleRAF = requestAnimationFrame(idleFrame);
-  if(actx && !idleSrc){
-    if(!idleBuf) idleBuf = makeIdleBuffer();
-    idleGain = actx.createGain(); idleGain.gain.value = 0;
-    idleSrc = actx.createBufferSource(); idleSrc.buffer = idleBuf; idleSrc.loop = true;
-    idleSrc.connect(idleGain); idleGain.connect(actx.destination);
-    idleSrc.start();
-    idleGain.gain.linearRampToValueAtTime(0.05, actx.currentTime + 0.8);
-  }
+  idleSound();
 }
 function stopIdle(){
   if(!idleOn && !idleSrc) return;
@@ -669,6 +667,7 @@ function stopIdle(){
 async function ensureAudio(){
   if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
   await actx.resume();
+  idleSound();   // first gesture: bring the idle line's ambient up
 }
 function stopPlayback(){
   queue = [];
@@ -727,22 +726,43 @@ async function pollThread(){
     if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">BOARD OFFLINE - needs the deployed /api + KV store.</div>';
   }
 }
-async function loadThread(key){     // -> level 3
+async function loadThread(key){     // -> thread view
   stopPlayback();
   activeKey = (key||'').trim();
   feedMsgs.length = 0; lastId = 0;
-  if(!activeKey){ activeChannel = null; setLevel(); return; }
+  if(!activeKey){ activeChannel = null; setView('none'); return; }
+  connected = true; document.getElementById('lnk').textContent = 'ONLINE';
+  if(!connectedAt) connectedAt = Date.now();
   feedEl.innerHTML = '<div class="csys">tuning in...</div>';
-  setLevel();
+  setView('thread');
   activeChannel = await channelId(activeKey);
   pollThread();
 }
 
-async function connect(){
+async function connect(){           // the first step: dial in
   if(playing || connected) return;
   await ensureAudio();
   if(!boot) boot = synth('boot','',1);
   play(boot, 'boot');
+}
+/* bottom-menu actions: connect must come first; then each reveals its field on demand */
+async function showCompose(){       // TRANSMIT
+  if(!connected){ connect(); return; }
+  await ensureAudio();
+  setView('compose'); msgIn.focus();
+}
+async function showKey(){           // KEY (paste a handshake code)
+  if(!connected){ connect(); return; }
+  await ensureAudio();
+  setView('keyentry'); keyIn.focus();
+}
+function openHandshake(){ if(!connected){ connect(); return; } clipIn.click(); }   // HANDSHAKE
+function doQuit(){                  // back to the clean terminal-only main screen
+  stopPlayback();
+  activeKey = ''; activeChannel = null; feedMsgs.length = 0; lastId = 0;
+  msgIn.value = ''; keyIn.value = ''; replyIn.value = '';
+  const a = document.activeElement; if(a && a.blur) a.blur();   // drop the keyboard
+  setView('none'); if(connected) menuLine();
 }
 async function sendUnder(key, text){
   play(synth('msg', text, 1), 'msg');   // hear your own plaintext
@@ -752,7 +772,7 @@ async function sendUnder(key, text){
     if(r.ok) pollThread();
   }catch(e){}
 }
-async function doTransmitNew(){      // level 2: type a msg -> new keyed thread
+async function doTransmitNew(){      // compose -> new keyed thread
   if(playing) return;
   await ensureAudio();
   const text = msgIn.value.trim();
@@ -763,14 +783,14 @@ async function doTransmitNew(){      // level 2: type a msg -> new keyed thread
   sendUnder(key, text);
   sys('handshake minted - SAVE HANDSHAKE to share it (or COPY CODE).');
 }
-async function doListen(){           // level 2: enter a key -> tune in
+async function doListen(){           // key entry -> tune in
   if(playing) return;
   await ensureAudio();
   const key = keyIn.value.trim();
   if(!key){ keyIn.focus(); return; }
   await loadThread(key);
 }
-async function doReply(){            // level 3: keep transmitting under the same key
+async function doReply(){            // thread: keep transmitting under the same key
   if(playing || !activeKey) return;
   await ensureAudio();
   const text = replyIn.value.trim();
@@ -778,68 +798,53 @@ async function doReply(){            // level 3: keep transmitting under the sam
   replyIn.value = '';
   sendUnder(activeKey, text);
 }
-function doNew(){                    // back to the clean main menu (level 2)
-  stopPlayback();
-  activeKey = ''; activeChannel = null; feedMsgs.length = 0; lastId = 0;
-  msgIn.value = ''; keyIn.value = '';
-  const a = document.activeElement; if(a && a.blur) a.blur();   // drop the keyboard
-  setLevel();                                                   // -> idle menu, clean subtitle
-}
 async function doCopy(){               // recovery hatch: the handshake code in text, never shown otherwise
   if(!activeKey) return;
   try{ await navigator.clipboard.writeText(activeKey); sys('handshake code copied - a text backup if the clip fails.'); }
   catch(e){ sys('CODE: '+activeKey); }
 }
 
-connectBtn.addEventListener('click', connect);
 document.getElementById('txBtn2').addEventListener('click', doTransmitNew);
 document.getElementById('txBtn3').addEventListener('click', doReply);
 document.getElementById('listenBtn').addEventListener('click', doListen);
-document.getElementById('openClip').addEventListener('click', ()=>clipIn.click());
 clipIn.addEventListener('change', e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openKeyClip(f); });
 document.getElementById('saveKey').addEventListener('click', ()=>{ if(activeKey) makeKeyClip(activeKey); });
 document.getElementById('copyKey').addEventListener('click', doCopy);
-document.getElementById('newKey').addEventListener('click', doNew);
 playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
 stopBtn.addEventListener('click', stopPlayback);
 msgIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doTransmitNew(); } });
 replyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doReply(); } });
 keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doListen(); } });
 
-/* bottom F-key bar + number keys, level-aware */
-function actTransmit(){ if(!connected) connect(); else if(activeKey) doReply(); else doTransmitNew(); }
-function actListen(){ if(activeKey) playAllBtn.click(); else if(connected) clipIn.click(); }
-txBtn.addEventListener('click', actTransmit);
-document.getElementById('fListen').addEventListener('click', actListen);
-document.getElementById('fCopy').addEventListener('click', ()=>{ if(activeKey) doCopy(); });
+connectBtn.addEventListener('click', connect);
 
-/* menu */
-document.getElementById('mLine').addEventListener('click', async ()=>{
-  if(playing) return; await ensureAudio();
-  if(!boot) boot = synth('boot','',1); play(boot, 'boot');
-});
-document.getElementById('mTx').addEventListener('click', ()=>{ (activeKey?replyIn:msgIn).focus(); });
-document.getElementById('mListen').addEventListener('click', ()=>{ if(activeKey) playAllBtn.click(); else clipIn.click(); });
+/* bottom menu: Transmit / Handshake / Key / Quit (reveal fields on demand) */
+function actTransmit(){ if(view==='thread') doReply(); else showCompose(); }
+txBtn.addEventListener('click', actTransmit);
+document.getElementById('bHand').addEventListener('click', openHandshake);
+document.getElementById('bKey').addEventListener('click', showKey);
+document.getElementById('bQuit').addEventListener('click', doQuit);
+
+/* top menu: Help only - the text stays on screen after it plays */
 document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return; await ensureAudio();
   if(!help) help = synth('msg', 'type a secret and transmit. you get a HANDSHAKE - a little clip of sound. save it and send it to a friend any way you like. they open the handshake here and the transmission unlocks. only someone with the handshake can hear it. play it to read it off the screen. no handshake, no message.', 1, 'HELP');
-  play(help, 'msg');
+  play(help, 'help');
 });
 
 addEventListener('keydown', e=>{
   if(e.target.tagName === 'INPUT') return;
   const k = e.key;
   if(k==='F1'||k==='1'){ e.preventDefault(); actTransmit(); }
-  if(k==='F2'||k==='2'){ e.preventDefault(); actListen(); }
-  if(k==='F3'||k==='3'){ e.preventDefault(); if(activeKey) doCopy(); }
-  if(k==='F10'){ e.preventDefault(); doNew(); }
+  if(k==='F2'||k==='2'){ e.preventDefault(); openHandshake(); }
+  if(k==='F3'||k==='3'){ e.preventDefault(); showKey(); }
+  if(k==='F10'){ e.preventDefault(); doQuit(); }
 });
 
-setLevel();
+setView('none');   // boot to terminal-only; idle line runs (visual now, sound after first tap)
 setInterval(()=>{ if(activeChannel && !playing) pollThread(); }, 4000);
 
-/* quit -> back to the main menu (level 2) */
-document.getElementById('fkq').addEventListener('click', doNew);
+/* clocks */
 function tickClock(){
   const d = new Date();
   document.getElementById('tclk').textContent =
