@@ -26,7 +26,10 @@
 <body>
 <h1>HANDSHAKE - key tone spike</h1>
 <p class="note">Encode a key into DTMF-style tones, export a clip, then decode any clip you upload.
-Goal: measure how reliably a key survives a messenger round-trip (download -> send -> get back -> upload).</p>
+Goal: measure if a key survives a messenger round-trip. <b>Test the WAV first</b> (it decodes
+everywhere) - send it to yourself as a file, get it back, upload it. The video tests the
+"send as a video" path, but iOS Safari may only record WebM (which messengers reject) - that
+limitation is itself a finding.</p>
 
 <fieldset>
   <legend>1. key</legend>
@@ -38,8 +41,9 @@ Goal: measure how reliably a key survives a messenger round-trip (download -> se
 
 <fieldset>
   <legend>2. export a clip</legend>
-  <button id="dlwav">&#11015; download WAV (audio)</button>
-  <button id="dlweb">&#11015; download video clip</button>
+  <button id="dlwav">&#11015; share/save WAV (audio)</button>
+  <button id="dlweb">&#11015; make video clip</button>
+  <button id="share">&#8599; share last clip</button>
   <div class="dim" id="expnote"></div>
 </fieldset>
 
@@ -216,13 +220,27 @@ addEventListener('resize', fitCv);
 let mediaEl=null;
 async function decodeFile(file){
   await ac().resume();
+  log('decoding "' + file.name + '" (' + file.size + ' bytes, ' + (file.type||'?') + ')...', 'dim');
+  // primary: offline decode (works for WAV everywhere, AAC/MP4 on Safari). Reliable, no playback.
+  let buffer=null;
+  try{ buffer = await ac().decodeAudioData(await file.arrayBuffer()); }catch(e){ buffer=null; }
+  if(buffer){
+    const x=buffer.getChannelData(0);
+    add('decodeAudioData: ' + x.length + ' samples @ ' + buffer.sampleRate + 'Hz, ' + buffer.duration.toFixed(2) + 's', 'dim');
+    report('result (decodeAudioData):', keyEl.value.trim(), x, buffer.sampleRate);
+  }else{
+    add('decodeAudioData could not read it (container/codec, e.g. webm/opus on Safari).', 'bad');
+    add('trying realtime playback capture as a fallback...', 'dim');
+    captureDecode(file);
+  }
+}
+async function captureDecode(file){
   if(mediaEl){ try{ mediaEl.pause(); }catch(e){} }
-  log('playing + decoding "' + file.name + '"...', 'dim');
   fitCv();
   const url=URL.createObjectURL(file);
   mediaEl = document.createElement(file.type.startsWith('audio') ? 'audio' : 'video');
-  mediaEl.src=url; mediaEl.crossOrigin='anonymous'; mediaEl.playsInline=true;
-  const src=ac().createMediaElementSource(mediaEl);
+  mediaEl.src=url; mediaEl.crossOrigin='anonymous'; mediaEl.playsInline=true; mediaEl.muted=false;
+  let src; try{ src=ac().createMediaElementSource(mediaEl); }catch(e){ log('cannot route audio: '+e,'bad'); return; }
   const an=ac().createAnalyser(); an.fftSize=2048; const fb=new Uint8Array(an.frequencyBinCount);
   const sp=ac().createScriptProcessor(4096,1,1);
   const chunks=[];
@@ -235,7 +253,8 @@ async function decodeFile(file){
   mediaEl.onended=()=>{ cancelAnimationFrame(raf); try{ sp.disconnect(); src.disconnect(); an.disconnect(); }catch(e){}
     let len=0; for(const c of chunks) len+=c.length; const all=new Float32Array(len); let o=0; for(const c of chunks){ all.set(c,o); o+=c.length; }
     URL.revokeObjectURL(url);
-    report('decode of uploaded clip (sr ' + ac().sampleRate + '):', keyEl.value.trim(), all, ac().sampleRate);
+    add('captured ' + all.length + ' samples @ ' + ac().sampleRate + 'Hz', 'dim');
+    report('result (playback capture):', keyEl.value.trim(), all, ac().sampleRate);
   };
   try{ await mediaEl.play(); draw(); }catch(e){ log('could not play file: ' + e, 'bad'); }
 }
@@ -243,10 +262,12 @@ async function decodeFile(file){
 /* ---------- video clip export (canvas spectrogram + tones) ---------- */
 function pickMime(){
   if(!window.MediaRecorder) return null;
-  for(const m of ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'])
+  // prefer MP4/H.264+AAC: plays in messengers, saves to camera roll, AAC decodes via decodeAudioData
+  for(const m of ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus','video/webm'])
     if(MediaRecorder.isTypeSupported(m)) return m;
   return null;
 }
+let lastClip=null;
 async function exportVideo(){
   const mime=pickMime();
   if(!mime){ log('MediaRecorder/video not supported in this browser - use the WAV.', 'bad'); return; }
@@ -261,7 +282,14 @@ async function exportVideo(){
   const stream=new MediaStream([cv.captureStream(30).getVideoTracks()[0], dest.stream.getAudioTracks()[0]]);
   const rec=new MediaRecorder(stream, {mimeType:mime}); const parts=[];
   rec.ondataavailable=e=>{ if(e.data.size) parts.push(e.data); };
-  rec.onstop=()=>{ const blob=new Blob(parts,{type:mime}); dl(blob, 'handshake-key.' + (mime.includes('mp4')?'mp4':'webm')); log('video clip ready (' + mime + ').', 'ok'); };
+  rec.onstop=()=>{
+    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+    const blob=new Blob(parts,{type: mime.includes('mp4')?'video/mp4':'video/webm'});
+    lastClip={blob, name:'handshake-key.'+ext};
+    log('video clip ready: ' + ext.toUpperCase() + ', ' + blob.size + ' bytes (' + mime + ').', 'ok');
+    add(ext==='webm' ? 'NOTE: this Safari only records WebM - it will NOT play in messengers or save to camera roll. That is the iOS web limit; needs native for MP4.' : 'MP4 - should play in messengers and save to camera roll via Share.', ext==='webm'?'bad':'ok');
+    shareClip();
+  };
   let raf; const draw=()=>{ an.getByteFrequencyData(fb); const cw=Math.max(2,(devicePixelRatio||1)*2), H=cv.height;
     cx.drawImage(cv,-cw,0); const bins=Math.round(4000/(SR/an.fftSize));
     for(let y=0;y<H;y++){ const v=fb[((1-y/H)*bins)|0]||0; cx.fillStyle='rgb(0,'+((v*0.6)|0)+','+v+')'; cx.fillRect(cv.width-cw,y,cw,1);} raf=requestAnimationFrame(draw); };
@@ -269,18 +297,33 @@ async function exportVideo(){
   srcN.onended=()=>{ cancelAnimationFrame(raf); setTimeout(()=>rec.stop(), 120); };
   log('recording video clip...', 'dim');
 }
+async function shareClip(){
+  if(!lastClip){ log('export a clip first.', 'bad'); return; }
+  const file=new File([lastClip.blob], lastClip.name, {type:lastClip.blob.type});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'handshake key'}); }   // iOS: Save Video / send to WhatsApp
+    catch(e){ dl(lastClip.blob, lastClip.name); }
+  }else{ dl(lastClip.blob, lastClip.name); }
+}
 function dl(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); }
 
 /* ---------- wiring ---------- */
+async function deliver(blob, name){
+  const file=new File([blob], name, {type:blob.type});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'handshake key'}); }catch(e){ dl(blob,name); }
+  }else dl(blob,name);
+}
 const keyEl=document.getElementById('key');
 keyEl.value=genKey();
-document.getElementById('expnote').textContent = 'WAV = cleanest test. Video = the real "send as a video" test (' + (pickMime()||'unsupported here') + ').';
+document.getElementById('expnote').textContent = 'Start with the WAV (cleanest). Recorder format here: ' + (pickMime()||'video unsupported');
 document.getElementById('regen').onclick=()=>{ keyEl.value=genKey(); log('new key.', 'dim'); };
 document.getElementById('play').onclick=async()=>{ await ac().resume(); const f32=synthFrame(keyEl.value.trim());
   const buf=ac().createBuffer(1,f32.length,SR); buf.copyToChannel(f32,0); const s=ac().createBufferSource(); s.buffer=buf; s.connect(ac().destination); s.start(); log('playing tones...', 'dim'); };
 document.getElementById('self').onclick=()=>{ const f32=synthFrame(keyEl.value.trim()); report('self-test (in-memory, no file):', keyEl.value.trim(), f32, SR); };
-document.getElementById('dlwav').onclick=()=>{ dl(toWav(synthFrame(keyEl.value.trim())), 'handshake-key.wav'); log('WAV downloaded.', 'ok'); };
+document.getElementById('dlwav').onclick=()=>{ deliver(toWav(synthFrame(keyEl.value.trim())), 'handshake-key.wav'); log('sharing/saving WAV...', 'ok'); };
 document.getElementById('dlweb').onclick=exportVideo;
+document.getElementById('share').onclick=shareClip;
 document.getElementById('file').onchange=e=>{ if(e.target.files[0]) decodeFile(e.target.files[0]); };
 fitCv();
 </script>
