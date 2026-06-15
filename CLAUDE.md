@@ -36,11 +36,11 @@ The networked half is one zero-dependency serverless function (`api/messages.js`
 
 **State:** `connected` gates boot-vs-transmit. `boot`/`help` cache their synthesized results; per-message playback caches in `feedCache` by id. `playText` holds the string the typing subtitle reveals. **Speed is fixed 1x** (the old ½x/SPDS control was removed).
 
-**UI:** Norton Commander skin. Top menu (Line/Transmit/Listen/Help), two double-framed panels (TERMINAL / SECRET), bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + F-key row (1 Connect/Transmit, 2 Listen, 3 New key, 4 Copy key, 10 Quit). A `≤480px` media query hides the top wall-clock and the prompt. Number keys 1–4 are bound (ignored while typing in any `<input>`).
+**UI:** Norton Commander skin. Top menu (Line/Transmit/Listen/Help), two double-framed panels (TERMINAL / SECRET), bottom = `C:\HANDSHAKE>` prompt + status flags + ONLINE clock + F-key row (1 Connect/Transmit, 2 Listen, 3 Copy key, 10 Quit → back to the menu via `doNew`). A `≤480px` media query hides the top wall-clock and the prompt. Number keys 1–3 are bound (ignored while typing in any `<input>`).
 
 The `C:\SECRET` panel is a **3-level wizard** — `setLevel()` shows exactly one `.lvl` based on `connected` + `activeKey`:
 1. `#lvlConnect` — a `► CONNECT` button (offline). On boot completion `frame()` flips to level 2.
-2. `#lvlMenu` — `#msgIn` "type your msg" + `► TRANSMIT` (`doTransmitNew`), and `#keyIn` "enter key" + `► LISTEN` (`doListen`). `#keyIn` is prefilled from saved `hs_key`.
+2. `#lvlMenu` — `#msgIn` "type your msg" + `► TRANSMIT` (`doTransmitNew`), and `#keyIn` "enter key" + `► LISTEN` (`doListen`). Both fields start empty (keys aren't persisted).
 3. `#lvlThread` — the `#keyShow` key + `COPY`/`NEW` (`doNew` returns to level 2), a `#replyIn` + `► TRANSMIT` (`doReply`, same key), `► PLAY ALL`/`■ STOP`, and the play-only `#feed` thread.
 
 The bottom F-keys / number keys are level-aware: `actTransmit()` = connect → reply → transmit-new; `actListen()` = play-all (in a thread) → listen.
