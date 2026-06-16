@@ -67,6 +67,13 @@
   .fi:hover, .fi:focus-visible{background:#001a9c; outline:none;}
   .fi.playing{background:#001a9c;}
   .fi .ct{color:var(--dim);} .fi .pl{color:var(--mcyan); margin-left:6px;}
+  .fi .ch{margin:0 4px;} .fi .me{color:#fff;}
+  .fi .nd{color:var(--yel); margin-left:6px;}
+  .fi.read{opacity:.7;} .fi.read .nd{display:none;}
+  @keyframes fli{from{background:var(--mcyan)} to{background:transparent}}
+  .fi.flash{animation:fli 1s ease-out;}
+  .hrow{margin-top:8px; gap:8px; align-items:center;}
+  .hrow label{color:#fff;}
 
   .lvl[hidden], [hidden]{display:none;}
   .big{display:block; width:100%; background:var(--mcyan); color:#000; border:none;
@@ -137,6 +144,10 @@
     <div class="row frow">
       <button class="fbtn" id="saveKey" type="button">► SAVE HANDSHAKE</button>
       <button class="fbtn" id="copyKey" type="button">COPY CODE</button>
+    </div>
+    <div class="row hrow">
+      <label for="handleIn">YOU:</label>
+      <input id="handleIn" class="kin" maxlength="16" placeholder="your name" aria-label="your name">
     </div>
     <div class="row krow">
       <input id="replyIn" class="kin" maxlength="500" placeholder="type your secret" aria-label="reply">
@@ -594,6 +605,39 @@ const feedCache = {};   // id -> synthesized result for replay
 const feedMsgs = [];    // the current key's transmissions, in order
 function hhmm(t){ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
+/* names + read-state. The name rides INSIDE the ciphertext, so the relay still
+   sees nothing - only key holders can see who said what. */
+const handleIn = document.getElementById('handleIn');
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+const HANDLES = ['NEON','ACID','TURBO','CYBER','RETRO','VAPOR','GHOST','MODEM','PIXEL','GLITCH','STATIC','CARRIER'];
+function randHandle(){ return HANDLES[(Math.random()*HANDLES.length)|0] + ((Math.random()*90+10)|0); }
+let myHandle = (lsGet('hs_handle') || randHandle()).slice(0,16);
+lsSet('hs_handle', myHandle);
+const HCOLORS = ['#55ffff','#ffff55','#55ff55','#ff66cc','#ffaa55','#66aaff','#aa88ff','#ff7777'];
+function handleColor(h){ let n=0; for(let i=0;i<h.length;i++) n=(n*31+h.charCodeAt(i))>>>0; return HCOLORS[n%HCOLORS.length]; }
+function packMsg(text){ return JSON.stringify({h:myHandle, m:text}); }
+function unpackMsg(plain){
+  try{ const o=JSON.parse(plain); if(o && typeof o.m==='string') return {who:(o.h||'').slice(0,16), text:o.m}; }catch(e){}
+  return {who:'', text:plain};   // legacy / plain
+}
+let readSet = new Set(), threadLoaded = false;
+function loadRead(){ try{ readSet = new Set(JSON.parse(lsGet('hs_read:'+activeChannel)||'[]')); }catch(e){ readSet = new Set(); } }
+function markRead(id){ if(readSet.has(id)) return; readSet.add(id); lsSet('hs_read:'+activeChannel, JSON.stringify([...readSet].slice(-800))); }
+function blip(){   // soft "incoming" tick for a new transmission
+  if(!actx || playing) return;
+  try{ const n=(0.08*SR)|0, buf=actx.createBuffer(1,n,SR), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = Math.sin(2*Math.PI*1300*i/SR)*0.2*Math.min(1,(n-i)/700);
+    const s=actx.createBufferSource(); s.buffer=buf; s.connect(actx.destination); s.start(); }catch(e){}
+}
+function paintItem(m){
+  const mine = m.who && m.who===myHandle;
+  const who = m.who
+    ? '<span class="ch'+(mine?' me':'')+'"'+(mine?'':' style="color:'+handleColor(m.who)+'"')+'>'+escp(mine?'you':m.who)+'</span>'
+    : '';
+  m.el.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span>'+who+'<span class="pl">► PLAY</span><span class="nd">NEW</span>';
+}
+
 function setView(v){
   view = connected ? v : 'connect';     // CONNECT is the gate - the first step
   secretEl.hidden = view==='none';
@@ -683,9 +727,10 @@ function stopPlayback(){
 async function playOne(m, btn){
   if(playing) return;
   await ensureAudio();
-  if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.plain, 1, 'RX');
+  if(!feedCache[m.id]) feedCache[m.id] = synth('msg', m.plain, 1, (m.who||'RX'));
   document.querySelectorAll('.fi.playing').forEach(el=>el.classList.remove('playing'));
-  if(btn){ btn.classList.add('playing'); btn.scrollIntoView({block:'nearest'}); }
+  if(btn){ btn.classList.add('playing'); btn.classList.remove('flash'); btn.scrollIntoView({block:'nearest'}); }
+  if(!readSet.has(m.id)){ markRead(m.id); if(m.el) m.el.classList.add('read'); }   // playing it = read
   play(feedCache[m.id], 'msg');
 }
 function playFromQueue(){            // continues a PLAY ALL run (called from frame())
@@ -699,21 +744,28 @@ function playSequence(msgs){
   playOne(msgs[0], msgs[0].el);
 }
 
-async function addItem(m){
+async function addItem(m, live){
   if(!m || m.id<=lastId) return;
   lastId = m.id;
   const plain = await decMsg(activeKey, m.enc);
   if(plain == null) return;          // not for this key - skip
-  m.plain = plain;
+  const u = unpackMsg(plain); m.who = u.who; m.plain = u.text;
+  const mine = m.who && m.who===myHandle;
+  if(mine) markRead(m.id);           // your own messages aren't "new"
   feedMsgs.push(m);
   const ph = feedEl.querySelector('.csys'); if(ph) ph.remove();
   const atBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40;
   const b = document.createElement('button');
   b.className = 'fi'; b.type = 'button'; m.el = b;
-  b.innerHTML = '<span class="ct">['+hhmm(m.t)+']</span><span class="pl">► PLAY</span>';
+  if(readSet.has(m.id)) b.classList.add('read');
+  paintItem(m);
   b.addEventListener('click', ()=>{ stopPlayback(); playOne(m, b); });
   feedEl.appendChild(b);
-  if(atBottom) feedEl.scrollTop = feedEl.scrollHeight;
+  if(live && !mine){                 // a fresh transmission from someone else
+    b.classList.add('flash'); blip();
+    if(!playing) sys('new transmission'+(m.who?(' from '+m.who):'')+' - PLAY to hear.');
+  }
+  if(atBottom || (live && !mine)) feedEl.scrollTop = feedEl.scrollHeight;
 }
 async function pollThread(){
   if(!activeChannel) return;
@@ -721,7 +773,9 @@ async function pollThread(){
     const r = await fetch('/api/messages?channel='+encodeURIComponent(activeChannel)+'&since='+lastId, {cache:'no-store'});
     if(!r.ok) throw 0;
     const j = await r.json();
-    for(const m of (j.messages||[])) await addItem(m);
+    const live = threadLoaded;       // first load isn't "live" (no flash/blip on history)
+    for(const m of (j.messages||[])) await addItem(m, live);
+    threadLoaded = true;
     if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">no transmissions on this key yet - TRANSMIT one.</div>';
   }catch(e){
     if(!feedMsgs.length) feedEl.innerHTML = '<div class="csys">BOARD OFFLINE - needs the deployed /api + KV store.</div>';
@@ -730,13 +784,15 @@ async function pollThread(){
 async function loadThread(key){     // -> thread view
   stopPlayback();
   activeKey = (key||'').trim();
-  feedMsgs.length = 0; lastId = 0;
+  feedMsgs.length = 0; lastId = 0; threadLoaded = false;
   if(!activeKey){ activeChannel = null; setView('none'); return; }
   connected = true; document.getElementById('lnk').textContent = 'ONLINE';
   if(!connectedAt) connectedAt = Date.now();
+  handleIn.value = myHandle;
   feedEl.innerHTML = '<div class="csys">tuning in...</div>';
   setView('thread');
   activeChannel = await channelId(activeKey);
+  loadRead();                        // restore which messages you've already played
   pollThread();
 }
 
@@ -769,7 +825,7 @@ async function sendUnder(key, text){
   play(synth('msg', text, 1), 'msg');   // hear your own plaintext
   try{
     const r = await fetch('/api/messages', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ channel: await channelId(key), enc: await encMsg(key, text) })});
+      body: JSON.stringify({ channel: await channelId(key), enc: await encMsg(key, packMsg(text)) })});
     if(r.ok) pollThread();
   }catch(e){}
 }
@@ -822,6 +878,7 @@ document.getElementById('copyKey').addEventListener('click', doCopy);
 playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
 stopBtn.addEventListener('click', stopPlayback);
 document.getElementById('refreshBtn').addEventListener('click', doRefresh);
+handleIn.addEventListener('input', ()=>{ myHandle = (handleIn.value.trim()||'ANON').slice(0,16); lsSet('hs_handle', myHandle); });
 msgIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doTransmitNew(); } });
 replyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doReply(); } });
 keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doListen(); } });
