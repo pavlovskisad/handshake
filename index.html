@@ -145,6 +145,7 @@
     <div class="row frow">
       <button class="fbtn" id="playAll" type="button">► PLAY ALL</button>
       <button class="fbtn" id="stopAll" type="button">■ STOP</button>
+      <button class="fbtn" id="refreshBtn" type="button">REFRESH</button>
     </div>
     <div class="feed" id="feed"></div>
   </div>
@@ -798,6 +799,14 @@ async function doReply(){            // thread: keep transmitting under the same
   replyIn.value = '';
   sendUnder(activeKey, text);
 }
+async function doRefresh(){            // thread: check the line for new transmissions, no reload
+  if(!activeChannel || playing) return;
+  const n0 = feedMsgs.length;
+  sys('checking the line...');
+  await pollThread();
+  const d = feedMsgs.length - n0;
+  sys(d>0 ? (d+' new transmission'+(d>1?'s':'')+' - PLAY ALL to hear.') : 'up to date - no new transmissions.');
+}
 async function doCopy(){               // recovery hatch: the handshake code in text, never shown otherwise
   if(!activeKey) return;
   try{ await navigator.clipboard.writeText(activeKey); sys('handshake code copied - a text backup if the clip fails.'); }
@@ -812,6 +821,7 @@ document.getElementById('saveKey').addEventListener('click', ()=>{ if(activeKey)
 document.getElementById('copyKey').addEventListener('click', doCopy);
 playAllBtn.addEventListener('click', async ()=>{ await ensureAudio(); stopPlayback(); playSequence(feedMsgs); });
 stopBtn.addEventListener('click', stopPlayback);
+document.getElementById('refreshBtn').addEventListener('click', doRefresh);
 msgIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doTransmitNew(); } });
 replyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doReply(); } });
 keyIn.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doListen(); } });
