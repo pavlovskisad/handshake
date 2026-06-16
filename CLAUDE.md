@@ -43,7 +43,7 @@ The networked half is one zero-dependency serverless function (`api/messages.js`
 - `'none'` — terminal only; the idle line runs.
 - `'compose'` — `#vCompose`: `#msgIn` + `► TRANSMIT` (`doTransmitNew`). Via bottom **Transmit** (`showCompose`).
 - `'keyentry'` — `#vKey`: `#keyIn` "paste a handshake code" + `► LISTEN` (`doListen`). Via bottom **Key** (`showKey`) — the text fallback to the clip.
-- `'thread'` — `#vThread`: `► SAVE HANDSHAKE` (`makeKeyClip`), `COPY CODE` (`doCopy`, recovery hatch, in-panel only), `#replyIn` + `► TRANSMIT` (`doReply`), `► PLAY ALL`/`■ STOP`, and the play-only `#feed`. **No NEW button** — bottom **Quit** (`doQuit`) returns to `'none'`.
+- `'thread'` — `#vThread`: `► SAVE HANDSHAKE` (`makeKeyClip`), `COPY CODE` (`doCopy`, recovery hatch, in-panel only), `#replyIn` + `► TRANSMIT` (`doReply`), `► PLAY ALL`/`■ STOP`/`REFRESH` (`doRefresh` — manual poll, no reload), and the play-only `#feed`. **No NEW button** — bottom **Quit** (`doQuit`) returns to `'none'`.
 
 The bottom actions each `connect()` first if offline (so any tap dials in). Bottom **Handshake** (`openHandshake` → hidden `#clipIn` picker → `openKeyClip`) opens a clip once connected. A `≤480px` media query hides the top wall-clock and the prompt.
 
