@@ -828,7 +828,7 @@ document.getElementById('bQuit').addEventListener('click', doQuit);
 /* top menu: Help only - the text stays on screen after it plays */
 document.getElementById('mHelp').addEventListener('click', async ()=>{
   if(playing) return; await ensureAudio();
-  if(!help) help = synth('msg', 'type a secret and transmit. you get a HANDSHAKE - a little clip of sound. save it and send it to a friend any way you like. they open the handshake here and the transmission unlocks. only someone with the handshake can hear it. play it to read it off the screen. no handshake, no message.', 1, 'HELP');
+  if(!help) help = synth('msg', 'connect to dial in. transmit a secret - it leaves encrypted and you get a handshake, a clip of sound that is the key. send it to a friend; they connect, open it, and tune in - the secret plays and reads off the screen. no handshake, no message.', 1, 'HELP');
   play(help, 'help');
 });
 
